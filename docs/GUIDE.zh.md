@@ -121,7 +121,28 @@ bash remote-agent.sh --install-claude   # 在本机装 Claude hooks,然后运行
 
 直接 `bash remote-agent.sh` 则只跑 agent、不碰 Claude(只有 Codex)。
 
-**如何停止 / 卸载。** agent 不装任何持久化东西——**Ctrl-C**(或 kill)即停。要移除它装的 Claude hooks:
+**要一直开着——它是常驻中继,不是一次性命令。** `csm-agent` 会前台常驻、盯着会话活动并
+实时发布事件;一旦退出,桌面就收不到更新了。所以让它一直开着,或放后台:
+
+```bash
+# nohup 后台(日志写文件)
+nohup bash remote-agent.sh > ~/csm-agent.log 2>&1 &
+tail -f ~/csm-agent.log        # 看到 “publishing …” 两行即 OK;Ctrl-C 退出 tail 不影响后台
+
+# 或放进可重连的 tmux 会话
+tmux new -s csm 'bash remote-agent.sh'     # 脱离:Ctrl-b d  ·  回看:tmux attach -t csm
+```
+
+**一个 agent 同时管两种 CLI——别重复开。** 单个 `csm-agent` 进程会同时 tail Codex 的 rollout
+文件**并**读 Claude 的事件总线,两路都发到同一个 topic。不需要开第二个。查一下开了几个:
+
+```bash
+pgrep -af csm-agent      # 正常应只有一行
+```
+
+多开只会把同样的事件发两遍(桌面按会话去重,无害但浪费)——`pkill -f csm-agent` 后只起一个即可。
+
+**如何停止 / 卸载。** agent 不装任何持久化东西——**Ctrl-C**(或 `pkill -f csm-agent`)即停。要移除它装的 Claude hooks:
 
 ```bash
 bash remote-agent.sh --uninstall        # 移除 Claude hooks(会先备份)

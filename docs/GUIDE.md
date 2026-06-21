@@ -142,8 +142,33 @@ bash remote-agent.sh --install-claude   # install Claude hooks here, then run
 
 Plain `bash remote-agent.sh` runs the agent without touching Claude (Codex only).
 
+**Keep it running — it's a long-running relay, not a one-shot.** `csm-agent` stays
+in the foreground watching for session activity and publishing events as they
+happen; if it exits, the desktop stops getting updates. So leave it running, or
+start it detached:
+
+```bash
+# background with nohup (logs to a file)
+nohup bash remote-agent.sh > ~/csm-agent.log 2>&1 &
+tail -f ~/csm-agent.log        # confirm the "publishing …" lines; Ctrl-C leaves it running
+
+# …or in a tmux session you can reattach to
+tmux new -s csm 'bash remote-agent.sh'     # detach: Ctrl-b d  ·  reattach: tmux attach -t csm
+```
+
+**One agent covers both CLIs — don't start duplicates.** A single `csm-agent`
+process tails Codex's rollout files *and* reads Claude's event bus, publishing
+both to the one topic. You don't need a second one. Check how many are running:
+
+```bash
+pgrep -af csm-agent      # expect exactly one line
+```
+
+Duplicates just send the same events twice (the desktop de-dupes by session, so
+it's harmless but wasteful) — `pkill -f csm-agent` and start a single one.
+
 **How to stop / remove.** The agent installs nothing persistent — **Ctrl-C** (or
-kill it) to stop. To remove the Claude hooks it added:
+`pkill -f csm-agent`) to stop. To remove the Claude hooks it added:
 
 ```bash
 bash remote-agent.sh --uninstall        # remove the Claude hooks (backs up first)
