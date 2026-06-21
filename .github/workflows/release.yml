@@ -37,8 +37,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $bundle = "src-tauri/target/release/bundle"
-          $files = Get-ChildItem $bundle -Recurse -Include *.exe,*.msi -ErrorAction SilentlyContinue
+          # Workspace target is at the repo root (target/release/bundle); also
+          # check src-tauri/ in case of a non-workspace layout.
+          $bundles = @("target/release/bundle", "src-tauri/target/release/bundle") |
+            Where-Object { Test-Path $_ }
+          $files = @()
+          foreach ($b in $bundles) {
+            $files += Get-ChildItem $b -Recurse -Include *.exe,*.msi -ErrorAction SilentlyContinue
+          }
           if (-not $files) { Write-Host "no installers found, skipping"; exit 0 }
           $files | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash, $_.Name } |
             Out-File -FilePath SHA256SUMS.txt -Encoding ascii
