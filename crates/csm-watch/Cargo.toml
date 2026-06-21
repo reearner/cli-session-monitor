@@ -1,0 +1,15 @@
+[package]
+name = "csm-watch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared event sources (local file bus + Codex rollout watcher) for cli-session-monitor."
+
+[dependencies]
+csm-core = { path = "../csm-core" }
+serde_json = { workspace = true }
+notify = "6"
+ureq = "2"
+
+[dev-dependencies]
+tempfile = "3"

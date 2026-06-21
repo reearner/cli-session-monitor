@@ -1,0 +1,26 @@
+# https://editorconfig.org — consistent formatting across editors.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Web frontend, config, and data files use 2-space indent.
+[*.{ts,tsx,js,jsx,json,css,html,yml,yaml,toml}]
+indent_size = 2
+
+# Rust uses 4-space indent (rustfmt default).
+[*.rs]
+indent_size = 4
+
+# Markdown: keep trailing whitespace (it encodes hard line breaks).
+[*.md]
+trim_trailing_whitespace = false
+
+# Windows scripts use CRLF.
+[*.{bat,cmd,ps1}]
+end_of_line = crlf

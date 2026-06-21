@@ -1,0 +1,35 @@
+# Rust
+/target
+**/target
+
+# Tauri generated schemas
+/src-tauri/gen/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Backups produced by the installer (should never be committed)
+*.bak
+backups/
+
+# Raw screen recordings (the optimized GIF in docs/ is what we commit)
+*.mp4
+
+# Generated remote launcher — has your relay topic/token baked in; never commit.
+remote-agent.sh
+# Local runtime data (events, config, logs) if the app is ever run from here.
+.cli-session-monitor/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# spec-workflow tool working files (internal scaffolding — not part of the
+# project; the real docs live in docs/). Ignore the whole dir.
+audit.log
+.spec-workflow/

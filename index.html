@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      /* html stays transparent (so the ball window has no square around it);
+         body is dark in full view, transparent in ball view (set by body.ball). */
+      html {
+        background: transparent;
+      }
+      body {
+        background: #16181d;
+      }
+    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CLI Session Monitor</title>
+    <!-- styles are imported by src/main.ts so Vite bundles them for prod too -->
+  </head>
+  <body>
+    <div id="app">
+      <button id="pill" class="pill" hidden>
+        <span class="pill-dot"></span>
+        <span id="pill-text" class="pill-text"></span>
+        <span id="pill-counts" class="pill-counts">
+          <span id="pc-run" class="pc-run"></span>
+          <span id="pc-wait" class="pc-wait"></span>
+          <span id="pc-done" class="pc-done"></span>
+          <span id="pc-idle" class="pc-idle"></span>
+        </span>
+      </button>
+
+      <header class="topbar">
+        <span class="title">CLI Session Monitor</span>
+        <button id="btn-settings" class="icon-btn" title="Settings">⚙</button>
+      </header>
+
+      <main id="sessions" class="sessions"></main>
+      <p id="empty" class="empty">No active sessions.</p>
+
+      <section id="settings" class="settings" hidden></section>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

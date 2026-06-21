@@ -1,0 +1,28 @@
+# Normalize line endings so the repo is consistent across Windows/macOS/Linux
+# and the "LF will be replaced by CRLF" warnings stop. Text files are stored as
+# LF in the repo; Git checks them out per the rules below.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Shell scripts must stay LF (they run on remote Linux hosts).
+*.sh    text eol=lf
+
+# Binary assets — never normalize or attempt to diff.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.icns  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+
+# Generated lockfiles: keep but collapse in diffs/reviews.
+Cargo.lock      linguist-generated=true
+package-lock.json linguist-generated=true

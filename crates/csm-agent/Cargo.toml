@@ -1,0 +1,14 @@
+[package]
+name = "csm-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Remote agent: watches Codex/Claude on a server and publishes session events to a relay (ntfy)."
+
+[[bin]]
+name = "csm-agent"
+path = "src/main.rs"
+
+[dependencies]
+csm-core = { path = "../csm-core" }
+csm-watch = { path = "../csm-watch" }

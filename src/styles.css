@@ -1,0 +1,545 @@
+:root {
+  color-scheme: dark;
+  --bg: #16181d;
+  --panel: #1e2127;
+  --border: #2c3038;
+  --text: #e6e8ec;
+  --muted: #8b919e;
+  --run: #3b82f6;
+  --wait: #f59e0b;
+  --done: #22c55e;
+  --idle: #6b7280;
+  --accent: #3b82f6;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden; /* no scrollbars (esp. the tiny docked/ball windows) */
+}
+body {
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  user-select: none;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag; /* draggable frameless window */
+}
+.title {
+  font-weight: 600;
+}
+.icon-btn {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+.icon-btn:hover {
+  color: var(--text);
+}
+
+.sessions {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.empty {
+  color: var(--muted);
+  padding: 20px 16px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--idle);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.card.status-running {
+  border-left-color: var(--run);
+}
+.card.status-waiting {
+  border-left-color: var(--wait);
+}
+.card.status-done {
+  border-left-color: var(--wait);
+}
+.card.status-idle {
+  opacity: 0.55;
+}
+.card.openable {
+  cursor: pointer;
+}
+.card.openable:hover {
+  border-color: var(--accent);
+  background: #232732;
+}
+/* The card whose editor window is the current foreground window. */
+.card.active-window {
+  border-color: var(--accent);
+  background: #232732;
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    0 0 8px -2px var(--accent);
+}
+.card.active-window.status-idle {
+  opacity: 1; /* don't dim the window you're actually in */
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Close (×) button — right end of the head, subtle until hover. */
+.card-close {
+  margin-left: auto;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  line-height: 1;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s;
+}
+.card:hover .card-close {
+  opacity: 0.65;
+}
+.card-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--idle);
+  flex: none;
+}
+.status-running .dot {
+  background: var(--run);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.status-waiting .dot {
+  background: var(--wait);
+  animation: pulse 0.8s ease-in-out infinite;
+}
+.status-done .dot {
+  background: var(--wait);
+  animation: pulse 0.8s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.source {
+  font-weight: 600;
+}
+.host {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: auto;
+}
+.cwd {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 4px 0 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.winline {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.status {
+  font-size: 12px;
+}
+.timer {
+  margin-left: auto;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.badge {
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.settings {
+  border-top: 1px solid var(--border);
+  padding: 12px;
+  overflow: auto;
+  max-height: 55vh;
+}
+.settings h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 14px 0 6px;
+}
+.settings h2:first-child {
+  margin-top: 0;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.text-input {
+  margin-left: auto;
+  width: 150px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 3px 6px;
+  font: inherit;
+}
+.note {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 2px 0 8px;
+}
+.integration {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.int-name {
+  width: 96px;
+}
+.ok-tag {
+  color: var(--done);
+  font-size: 12px;
+  margin-right: auto;
+}
+.ok-tag.off {
+  color: var(--muted);
+}
+.btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn:hover {
+  filter: brightness(1.08);
+}
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.result {
+  white-space: pre-wrap;
+  color: var(--muted);
+  font-size: 11px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-top: 8px;
+  /* Selectable despite the global user-select:none, so the exported command /
+     path can be copied (Ctrl+C or right-click). */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+.result:empty {
+  display: none;
+}
+/* Inputs stay selectable too (the global user-select:none keeps panel-drags from
+   selecting text, but the user must be able to select/copy field contents). */
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ---- Floating ball (lightweight mode collapsed) ---- */
+/* The window is transparent; in ball mode only the round .pill is painted. */
+body.ball {
+  background: transparent;
+}
+body.ball .topbar,
+body.ball .sessions,
+body.ball .empty,
+body.ball .settings {
+  display: none;
+}
+body.ball .pill-dot {
+  display: none;
+}
+
+/* fixed-size circle (never stretches with the window, so no ellipse mid-resize) */
+body.ball #app {
+  align-items: center;
+  justify-content: center;
+}
+.pill {
+  -webkit-app-region: drag;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 2px solid var(--idle);
+  color: var(--text);
+  font: 600 15px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  cursor: pointer;
+  /* no box-shadow: the tiny transparent window clips it into a gray square */
+}
+.pill:hover {
+  filter: brightness(1.12);
+}
+.pill.s-run {
+  border-color: var(--run);
+}
+.pill.s-wait {
+  border-color: var(--wait);
+  animation: pulse 0.9s ease-in-out infinite;
+}
+/* acknowledged (user viewed the panel then collapsed): keep the amber state but
+   stop the continuous pulse so it no longer nags */
+body.ack .pill.s-wait {
+  animation: none;
+}
+
+/* ---- Docked edge bar (idle ball slid to the nearest screen edge) ---- */
+body.docked #app {
+  align-items: stretch;
+  justify-content: stretch;
+}
+body.docked .pill-text {
+  display: none;
+}
+body.docked .pill {
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  border: none;
+  /* neutral strip so the colour-coded counts stay readable (status is conveyed
+     by which coloured counts are present, not by the bar background) */
+  background: var(--panel);
+}
+.pill-text {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pill[hidden] {
+  display: none;
+}
+
+/* docked bar counts: ▶running on top, ✓finished below (stacked on a vertical
+   edge bar; side-by-side on a top/bottom bar). Hidden everywhere else. */
+.pill-counts {
+  display: none;
+}
+body.docked .pill-counts {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  font: 700 10px/1.05 ui-monospace, "Cascadia Code", Consolas, monospace;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+body.docked.edge-left .pill-counts,
+body.docked.edge-right .pill-counts {
+  flex-direction: column;
+}
+.pc-run,
+.pc-wait,
+.pc-done,
+.pc-idle {
+  white-space: nowrap;
+}
+.pc-run {
+  color: var(--run);
+}
+.pc-wait {
+  color: var(--wait);
+}
+.pc-done {
+  color: var(--done);
+}
+.pc-idle {
+  color: var(--idle);
+}
+.pc-run:empty,
+.pc-wait:empty,
+.pc-done:empty,
+.pc-idle:empty {
+  display: none;
+}
+
+/* ---- Flash on completion / waiting ---- */
+@keyframes flash-done-kf {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+  25%,
+  60% {
+    box-shadow: inset 0 0 0 3px rgba(34, 197, 94, 0.85);
+  }
+}
+@keyframes flash-wait-kf {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+  25%,
+  60% {
+    box-shadow: inset 0 0 0 3px rgba(245, 158, 11, 0.9);
+  }
+}
+/* full view only: glow the whole app. Excluded in ball/docked mode (`body.ball`),
+   where #app fills the tiny square window and would flash as a box — there only
+   the round pill / bar glows (rules below). */
+body:not(.ball).flash-done #app {
+  animation: flash-done-kf 0.7s ease-in-out 2;
+}
+body:not(.ball).flash-waiting #app {
+  animation: flash-wait-kf 0.7s ease-in-out 2;
+}
+/* ball view: glow the orb */
+/* Glow INWARD (inset): an outward glow would exceed the tiny 60px transparent
+   window and get clipped into a square. Inset stays within the round pill. */
+@keyframes ball-done-kf {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 rgba(34, 197, 94, 0);
+    border-color: var(--done);
+  }
+  30%,
+  60% {
+    box-shadow: inset 0 0 13px 3px rgba(34, 197, 94, 0.95);
+    border-color: var(--done);
+  }
+}
+@keyframes ball-wait-kf {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 rgba(245, 158, 11, 0);
+    border-color: var(--wait);
+  }
+  30%,
+  60% {
+    box-shadow: inset 0 0 13px 3px rgba(245, 158, 11, 0.95);
+    border-color: var(--wait);
+  }
+}
+body.ball:not(.docked).flash-done .pill {
+  animation: ball-done-kf 0.7s ease-in-out 2;
+}
+body.ball:not(.docked).flash-waiting .pill {
+  animation: ball-wait-kf 0.7s ease-in-out 2;
+}
+
+/* docked bar: flash the whole bar's color (a glow on a 6px strip is too subtle) */
+@keyframes bar-done-kf {
+  0%,
+  100% {
+    background: var(--panel);
+  }
+  20%,
+  70% {
+    background: var(--done);
+    box-shadow: 0 0 10px 2px rgba(34, 197, 94, 0.95);
+  }
+}
+@keyframes bar-wait-kf {
+  0%,
+  100% {
+    background: var(--panel);
+  }
+  20%,
+  70% {
+    background: var(--wait);
+    box-shadow: 0 0 10px 2px rgba(245, 158, 11, 0.95);
+  }
+}
+body.docked.flash-done .pill {
+  animation: bar-done-kf 0.6s ease-in-out 4;
+}
+body.docked.flash-waiting .pill {
+  animation: bar-wait-kf 0.6s ease-in-out 4;
+}
+
+/* Accessibility: respect a reduced-motion preference — drop the pulsing/flashing
+   animations (status is still conveyed by color, label, and notifications). */
+@media (prefers-reduced-motion: reduce) {
+  .pill,
+  .pill-dot,
+  .dot,
+  #app {
+    animation: none !important;
+  }
+}
