@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-22
+
+### Fixed
+- Clicking the docked bar / floating ball is now reliable. The orb was an OS drag region, so any micro-movement while pressing made the system start a window move and the click was lost — worst during a completion flash, when the orb also pops out and repositions. Dragging is now manual (a press that moves past a small threshold starts the drag), so a still press always registers as a click.
+- Editor-window match/jump now disambiguates a folder open in **both** Cursor and VS Code by following the CLI's parent-process chain to the editor hosting its integrated terminal (previously an ambiguous tie → "no matching window"). Unicode/Chinese folder paths are covered by regression tests.
+- CI: the release checksum step looks in the workspace target dir, so `SHA256SUMS.txt` is published with each release.
+
+### Changed
+- Docs: the User Guides explain running the remote agent as a long-running relay (run it detached with `nohup`/`tmux`; one agent covers both Codex and Claude; don't start duplicates), and lead with downloading the prebuilt static Linux binaries (no Rust needed on the server).
+
+## [0.1.0] - 2026-06-21
+
 ### Added
 - Project scaffold: cargo workspace (`csm-core`, `csm-reporter`, `src-tauri`), MIT license, CI placeholder.
 - `csm-core`: unified event schema (`Event`, `EventKind`, `Source`, `SessionKey`) with `schema` version field and `host` for remote/cross-device support.
