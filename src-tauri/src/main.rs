@@ -212,10 +212,14 @@ fn active_window_cards(window: tauri::WebviewWindow, state: State<AppState>) -> 
     // and since each card resolves to one window, only the card(s) you're actually
     // in light up. Idle sessions are never highlighted.
     let snap = state.sm.lock().unwrap().snapshot();
+    let hints = cli_editor_hints();
     let keys = snap
         .iter()
         .filter(|v| v.status != state::SessionStatus::Idle)
-        .filter(|v| best_editor_window(&v.cwd, &v.host, &wins) == Some(fg_idx))
+        .filter(|v| {
+            let prefer = hints.get(&normalize_dir(&v.cwd)).copied();
+            best_editor_window(&v.cwd, &v.host, &wins, prefer) == Some(fg_idx)
+        })
         .map(|v| v.key.clone())
         .collect();
     ActiveCards { own: false, keys }
@@ -548,14 +552,81 @@ fn enumerate_top_windows() -> Vec<(windows::Win32::Foundation::HWND, String)> {
     wins
 }
 
+/// Map a local CLI's launch dir -> the editor it's running under ("cursor" /
+/// "code"), by walking each running `codex.exe` / `claude.exe` up its parent-
+/// process chain until it hits a `Cursor.exe` / `Code.exe` ancestor (its
+/// integrated terminal's host). Lets jump/highlight pick the right window when the
+/// SAME folder is open in both editors at once. Local only — a remote session's
+/// CLI isn't a process on this machine (it's matched by host instead).
+#[cfg(windows)]
+fn cli_editor_hints() -> HashMap<String, &'static str> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    // pid -> (exe name lowercased, parent pid); plus the CLI processes found.
+    let mut procs: HashMap<u32, (String, u32)> = HashMap::new();
+    let mut clis: Vec<(u32, String)> = Vec::new();
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return HashMap::new();
+        };
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        if Process32FirstW(snap, &mut entry).is_ok() {
+            loop {
+                let end = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
+                let name = String::from_utf16_lossy(&entry.szExeFile[..end]).to_lowercase();
+                if name == "codex.exe" || name == "claude.exe" {
+                    if let Some(cwd) = process_cwd(entry.th32ProcessID) {
+                        clis.push((entry.th32ProcessID, normalize_dir(&cwd)));
+                    }
+                }
+                procs.insert(entry.th32ProcessID, (name, entry.th32ParentProcessID));
+                if Process32NextW(snap, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snap);
+    }
+    let mut out: HashMap<String, &'static str> = HashMap::new();
+    for (pid, dir) in clis {
+        let mut cur = pid;
+        for _ in 0..24 {
+            let Some((name, ppid)) = procs.get(&cur) else {
+                break;
+            };
+            if name == "cursor.exe" {
+                out.insert(dir, "cursor");
+                break;
+            }
+            if name == "code.exe" {
+                out.insert(dir, "code");
+                break;
+            }
+            if *ppid == 0 || *ppid == cur {
+                break;
+            }
+            cur = *ppid;
+        }
+    }
+    out
+}
+
 /// Among `wins`, pick the index of the Cursor/VS Code window best matching this
 /// session (folder names from `cwd`; host for Remote-SSH). None = no confident
-/// unique match. Shared by jump-to-window and the per-card window label.
+/// unique match. `prefer` ("cursor"/"code") breaks an editor tie when the same
+/// folder is open in both. Shared by jump-to-window and the per-card window label.
 #[cfg(windows)]
 fn best_editor_window(
     cwd: &str,
     host: &str,
     wins: &[(windows::Win32::Foundation::HWND, String)],
+    prefer: Option<&str>,
 ) -> Option<usize> {
     // Match by the cwd PATH-TAIL, not individual folder names: score each window
     // by the longest *suffix* of the cwd path its title contains (titles carry
@@ -626,11 +697,33 @@ fn best_editor_window(
     };
     pool.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)));
     let best = *pool[0];
-    let ties = pool
+    let tied: Vec<usize> = pool
         .iter()
         .filter(|s| s.1 == best.1 && s.2 == best.2)
-        .count();
-    if ties > 1 || (best.1 == 0 && !best.2) {
+        .map(|s| s.0)
+        .collect();
+    if tied.len() > 1 {
+        // Same folder open in more than one editor → ambiguous. If we know which
+        // editor this session's CLI is actually running under (from its process
+        // ancestry), break the tie by preferring that editor's window.
+        if let Some(ed) = prefer {
+            let marker = if ed == "cursor" {
+                "cursor"
+            } else {
+                "visual studio code"
+            };
+            let matching: Vec<usize> = tied
+                .iter()
+                .copied()
+                .filter(|&i| wins[i].1.to_lowercase().contains(marker))
+                .collect();
+            if matching.len() == 1 {
+                return Some(matching[0]);
+            }
+        }
+        return None;
+    }
+    if best.1 == 0 && !best.2 {
         return None;
     }
     Some(best.0)
@@ -655,7 +748,9 @@ fn all_visible_titles() -> Vec<String> {
 #[cfg(windows)]
 fn find_editor_window(cwd: &str, host: &str) -> Option<windows::Win32::Foundation::HWND> {
     let wins = enumerate_top_windows();
-    let idx = best_editor_window(cwd, host, &wins);
+    let hints = cli_editor_hints();
+    let prefer = hints.get(&normalize_dir(cwd)).copied();
+    let idx = best_editor_window(cwd, host, &wins, prefer);
     if applog::enabled() {
         applog::line(&format!("[jump] cwd={cwd:?} host={host:?}"));
         for (_, t) in wins.iter().filter(|(_, t)| {
@@ -850,10 +945,12 @@ fn editor_from_title(title: &str) -> Option<&'static str> {
 #[cfg(windows)]
 fn match_session_windows(sessions: &[SessionLoc]) -> (Vec<Option<String>>, Vec<(String, String)>) {
     let wins = enumerate_top_windows();
+    let hints = cli_editor_hints();
     let mut titles = Vec::with_capacity(sessions.len());
     let mut learned = Vec::new();
     for s in sessions {
-        match best_editor_window(&s.cwd, &s.host, &wins) {
+        let prefer = hints.get(&normalize_dir(&s.cwd)).copied();
+        match best_editor_window(&s.cwd, &s.host, &wins, prefer) {
             Some(i) => {
                 let title = wins[i].1.clone();
                 if let Some(ed) = editor_from_title(&title) {
@@ -1474,7 +1571,10 @@ mod tests {
             (h(1), "其它项目 - Cursor".to_string()),
             (h(2), "D:\\代码\\我的项目 - Cursor".to_string()),
         ];
-        assert_eq!(best_editor_window("D:\\代码\\我的项目", "", &wins), Some(1));
+        assert_eq!(
+            best_editor_window("D:\\代码\\我的项目", "", &wins, None),
+            Some(1)
+        );
     }
 
     #[test]
@@ -1482,18 +1582,46 @@ mod tests {
         // VS Code's default "file - folder - app" title; the suffix matcher should
         // still find a Chinese folder basename.
         let wins = vec![(h(7), "main.rs - 我的项目 - Visual Studio Code".to_string())];
-        assert_eq!(best_editor_window("D:\\代码\\我的项目", "", &wins), Some(0));
+        assert_eq!(
+            best_editor_window("D:\\代码\\我的项目", "", &wins, None),
+            Some(0)
+        );
     }
 
     #[test]
     fn chinese_remote_path_matches_via_host() {
         // Remote-SSH window: Chinese folder + [SSH: host]; host disambiguates.
-        let wins = vec![(
-            h(3),
-            "我的项目 [SSH: build-server] - Cursor".to_string(),
-        )];
+        let wins = vec![(h(3), "我的项目 [SSH: build-server] - Cursor".to_string())];
         assert_eq!(
-            best_editor_window("/srv/我的项目", "build-server", &wins),
+            best_editor_window("/srv/我的项目", "build-server", &wins, None),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn same_folder_in_two_editors_is_ambiguous_without_a_hint() {
+        // Identical Chinese folder open in both Cursor and VS Code -> tie -> None.
+        let wins = vec![
+            (h(1), "D:\\代码\\我的项目 - Visual Studio Code".to_string()),
+            (h(2), "D:\\代码\\我的项目 - Cursor [Administrator]".to_string()),
+        ];
+        assert_eq!(best_editor_window("D:\\代码\\我的项目", "", &wins, None), None);
+    }
+
+    #[test]
+    fn editor_hint_breaks_the_two_editor_tie() {
+        // Same tie, but knowing the CLI runs under Cursor picks the Cursor window;
+        // knowing it runs under VS Code picks the other.
+        let wins = vec![
+            (h(1), "D:\\代码\\我的项目 - Visual Studio Code".to_string()),
+            (h(2), "D:\\代码\\我的项目 - Cursor [Administrator]".to_string()),
+        ];
+        assert_eq!(
+            best_editor_window("D:\\代码\\我的项目", "", &wins, Some("cursor")),
+            Some(1)
+        );
+        assert_eq!(
+            best_editor_window("D:\\代码\\我的项目", "", &wins, Some("code")),
             Some(0)
         );
     }
