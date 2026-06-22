@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-22
+
+### Added
+- The session card that just changed now **pulses** so you can tell which one it was when you open the panel (color follows status). Clears when you click it or after a few seconds; respects `prefers-reduced-motion` (static highlight).
+
+### Changed
+- **Distinguish "replied" from "awaiting your choice."** A finished turn now shows green **Replied / 已回复** (steady dot, green completion flash) — distinct from amber **Needs your input / 等待你确认** (pulsing dot, amber flash) used when the CLI is blocked needing your approval/choice (Claude permission prompt / Codex approval). Previously both looked the same.
+- The `session:flash` event carries the session key so the UI can highlight the specific card.
+
 ## [0.1.1] - 2026-06-22
 
 ### Fixed
