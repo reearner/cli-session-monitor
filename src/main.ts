@@ -1,5 +1,5 @@
 import "./styles.css";
-import type { SessionView } from "./types";
+import type { SessionView, SessionKey } from "./types";
 import { keyId } from "./types";
 import {
   getSnapshot,
@@ -368,11 +368,28 @@ function updatePill(): void {
   pillDot.className = "pill-dot " + cls;
 }
 
+// The session that most recently fired a flash (completion / waiting). Its card
+// pulses so you can spot which one it was when you open the panel. Cleared when
+// you click that card or after a short while.
+let alertKey: string | null = null;
+let alertTimer: number | undefined;
+function setAlert(key: SessionKey): void {
+  alertKey = keyId(key);
+  if (alertTimer) window.clearTimeout(alertTimer);
+  alertTimer = window.setTimeout(() => {
+    alertTimer = undefined;
+    alertKey = null;
+    render();
+  }, 12000);
+  render();
+}
+
 function render(): void {
   // full card list
   sessionsEl.replaceChildren();
   for (const v of sessions) {
     const card = createCard(v);
+    if (alertKey && keyId(v.key) === alertKey) card.classList.add("alerted");
     // Close button: hide this card (reappears on fresh activity). Stop the click
     // from bubbling to the card's jump-to-editor handler.
     card.querySelector<HTMLButtonElement>(".card-close")?.addEventListener(
@@ -394,7 +411,13 @@ function render(): void {
       card.title = remote
         ? t("card.clickRemote")
         : t("card.clickLocal", { dir: v.cwd });
-      card.addEventListener("click", () => void openSession(v.cwd, v.host, create));
+      card.addEventListener("click", () => {
+        if (alertKey === keyId(v.key)) {
+          alertKey = null;
+          card.classList.remove("alerted");
+        }
+        void openSession(v.cwd, v.host, create);
+      });
     }
     sessionsEl.append(card);
   }
@@ -680,8 +703,11 @@ async function init(): Promise<void> {
       sessions = s;
       render();
     });
-    await onFlash(async (kind) => {
+    await onFlash(async (kind, key) => {
       setAck(false); // a fresh completion/waiting -> alert again
+      // Mark which card it was so it pulses (green=replied, amber=needs you) —
+      // so on expanding the panel you can tell WHICH session just changed.
+      setAlert(key);
       // Keep the orb steady and clickable for the WHOLE flash. A docked bar pops
       // back to the round ball first (its glow would otherwise be a clipped
       // square). Either way, hold off the idle re-dock until the flash is well

@@ -104,8 +104,11 @@ export const onSessionsUpdate = (
 ): Promise<UnlistenFn> =>
   listen<SessionView[]>("sessions:update", (e) => cb(e.payload));
 
-/** Flash signal: "done" (completed) or "waiting" (needs you). */
+/** Flash signal: which session changed and how — "done" (turn finished) or
+ *  "waiting" (awaiting your choice/approval). */
 export const onFlash = (
-  cb: (kind: "done" | "waiting") => void,
+  cb: (kind: "done" | "waiting", key: SessionKey) => void,
 ): Promise<UnlistenFn> =>
-  listen<string>("session:flash", (e) => cb(e.payload === "waiting" ? "waiting" : "done"));
+  listen<{ kind: string; key: SessionKey }>("session:flash", (e) =>
+    cb(e.payload.kind === "done" ? "done" : "waiting", e.payload.key),
+  );

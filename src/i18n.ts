@@ -25,7 +25,8 @@ type Entry = { en: string; zh: string };
 const STR: Record<string, Entry> = {
   // ---- session card ----
   "status.running": { en: "Running", zh: "运行中" },
-  "status.waiting": { en: "Waiting for input", zh: "等待输入" },
+  "status.done": { en: "Replied", zh: "已回复" },
+  "status.waiting": { en: "Needs your input", zh: "等待你确认" },
   "status.idle": { en: "Idle", zh: "空闲" },
   "card.close": {
     en: "Close this card (reappears when the session acts again)",

@@ -10,10 +10,19 @@ function el(tag: string, cls?: string, text?: string): HTMLElement {
   return e;
 }
 
-// A finished turn means the CLI is waiting for your next input — present `done`
-// the same as `waiting` (internally still `done`, so timing/idle-decay are correct).
+// `done` = the CLI finished its turn (your turn to type); `waiting` = it's blocked
+// needing your choice/approval before it can continue. Shown distinctly (label +
+// color) so you can tell "replied" from "needs a decision" at a glance.
 function statusText(s: Status): string {
-  return t(s === "idle" ? "status.idle" : s === "running" ? "status.running" : "status.waiting");
+  return t(
+    s === "idle"
+      ? "status.idle"
+      : s === "running"
+        ? "status.running"
+        : s === "done"
+          ? "status.done"
+          : "status.waiting",
+  );
 }
 
 /**

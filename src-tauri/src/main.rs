@@ -179,6 +179,15 @@ struct ActiveCards {
     keys: Vec<csm_core::SessionKey>,
 }
 
+/// Payload for the `session:flash` event: which session changed and how, so the
+/// UI can pulse the right card ("done" = turn finished, "waiting" = awaiting your
+/// choice/approval).
+#[derive(Clone, serde::Serialize)]
+struct FlashPayload<'a> {
+    kind: &'a str,
+    key: &'a csm_core::SessionKey,
+}
+
 #[cfg(windows)]
 #[tauri::command]
 fn active_window_cards(window: tauri::WebviewWindow, state: State<AppState>) -> ActiveCards {
@@ -1278,17 +1287,17 @@ fn spawn_consumer(app: AppHandle, rx: std::sync::mpsc::Receiver<Event>) {
                 for e in &effects {
                     match e {
                         Effect::Completed(key) => {
-                            // A finished turn is "your turn to respond" in this UI
-                            // (the bar settles to the amber awaiting-input state, not
-                            // a green "done"), so flash amber too — a green pulse that
-                            // then lands on an amber bar reads as a jarring mismatch.
-                            let _ = app.emit("session:flash", "waiting");
+                            // Turn finished ("your turn to type") -> green "done"
+                            // flash, distinct from the amber "awaiting your choice".
+                            let _ = app.emit("session:flash", FlashPayload { kind: "done", key });
                             if !demo {
                                 notify::on_completed(&app, key, &snapshot, &cfg);
                             }
                         }
                         Effect::AwaitingInput(key) => {
-                            let _ = app.emit("session:flash", "waiting");
+                            // Blocked needing a decision/approval -> amber "waiting".
+                            let _ =
+                                app.emit("session:flash", FlashPayload { kind: "waiting", key });
                             if !demo {
                                 notify::on_awaiting_input(&app, key, &snapshot, &cfg);
                             }
