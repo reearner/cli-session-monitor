@@ -1455,3 +1455,46 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use windows::Win32::Foundation::HWND;
+
+    // best_editor_window ignores the HWND value (returns the matched index), so a
+    // dummy handle is fine for testing the title/cwd matching.
+    fn h(n: isize) -> HWND {
+        HWND(n as _)
+    }
+
+    #[test]
+    fn matches_chinese_folder_path() {
+        // Window title carrying a full Chinese path (as "Optimize jump" produces).
+        let wins = vec![
+            (h(1), "其它项目 - Cursor".to_string()),
+            (h(2), "D:\\代码\\我的项目 - Cursor".to_string()),
+        ];
+        assert_eq!(best_editor_window("D:\\代码\\我的项目", "", &wins), Some(1));
+    }
+
+    #[test]
+    fn matches_chinese_basename_in_default_title() {
+        // VS Code's default "file - folder - app" title; the suffix matcher should
+        // still find a Chinese folder basename.
+        let wins = vec![(h(7), "main.rs - 我的项目 - Visual Studio Code".to_string())];
+        assert_eq!(best_editor_window("D:\\代码\\我的项目", "", &wins), Some(0));
+    }
+
+    #[test]
+    fn chinese_remote_path_matches_via_host() {
+        // Remote-SSH window: Chinese folder + [SSH: host]; host disambiguates.
+        let wins = vec![(
+            h(3),
+            "我的项目 [SSH: build-server] - Cursor".to_string(),
+        )];
+        assert_eq!(
+            best_editor_window("/srv/我的项目", "build-server", &wins),
+            Some(0)
+        );
+    }
+}
