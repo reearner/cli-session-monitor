@@ -338,7 +338,10 @@ body.ball #app {
   justify-content: center;
 }
 .pill {
-  -webkit-app-region: drag;
+  /* NOT an OS drag region: a drag region intermittently swallows the click
+     (any micro-movement on press makes the OS start a window move, so the
+     `click` never fires). Dragging is done manually (pointermove -> startDragging
+     past a threshold) so clicks stay 100% reliable. See src/main.ts. */
   box-sizing: border-box;
   display: flex;
   align-items: center;

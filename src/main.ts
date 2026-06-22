@@ -546,8 +546,35 @@ function flash(kind: "done" | "waiting"): void {
   );
 }
 
-// pill click -> expand (remember where the ball was so we can return it there)
+// Manual drag for the ball/bar. The .pill is deliberately NOT an OS drag region
+// (those swallow the click on any micro-movement), so a press that stays put is a
+// reliable click, and a press that moves past a small threshold starts an OS
+// window drag instead. This is what makes clicking the docked bar dependable.
+let pillPress: { x: number; y: number } | null = null;
+let pillDragged = false;
+pillEl.addEventListener("pointerdown", (e) => {
+  pillPress = { x: e.screenX, y: e.screenY };
+  pillDragged = false;
+});
+pillEl.addEventListener("pointermove", (e) => {
+  if (!pillPress || pillDragged) return;
+  if (Math.abs(e.screenX - pillPress.x) > 4 || Math.abs(e.screenY - pillPress.y) > 4) {
+    pillDragged = true;
+    pillPress = null;
+    void getCurrentWindow().startDragging();
+  }
+});
+document.addEventListener("pointerup", () => {
+  pillPress = null;
+});
+
+// pill click -> expand (remember where the ball was so we can return it there).
+// Skip the click that ends a drag.
 pillEl.addEventListener("click", async () => {
+  if (pillDragged) {
+    pillDragged = false;
+    return;
+  }
   try {
     preExpandPos = await getCurrentWindow().outerPosition();
   } catch {
