@@ -24,6 +24,7 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
 
   # Full workspace incl. the Tauri app (needs Windows + WebView2).
   windows:
