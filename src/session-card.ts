@@ -33,12 +33,30 @@ export function createCard(v: SessionView): HTMLElement {
   const card = el("div", `card status-${v.status} src-${v.source}`);
   card.dataset.key = keyId(v.key);
 
+  // Real sessions carry a UUID; discovered placeholders are keyed by dir
+  // ("disc:..."), which isn't a resumable session id.
+  const real = !v.key.session_id.startsWith("disc:");
+
   const head = el("div", "card-head");
   head.append(
     el("span", "dot"),
     el("span", "source", sourceLabel(v.source)),
     el("span", "host", v.host),
   );
+  // Short session id — tells apart two cards that share a directory (e.g. several
+  // agents in one editor window).
+  if (real) {
+    const sid = el("span", "sid", "#" + v.key.session_id.slice(-6));
+    sid.title = v.key.session_id;
+    head.append(sid);
+  }
+  // Copy the resume command (wired in main.ts) so you can paste it into the exact
+  // terminal you want — handy when several agents share one window/dir.
+  if (real) {
+    const resume = el("button", "card-resume", "⧉");
+    resume.title = t("card.copyResume");
+    head.append(resume);
+  }
   // Close button — hides this card (wired in main.ts). Stops propagation there
   // so it doesn't also trigger the card's jump-to-editor click.
   const close = el("button", "card-close", "×");

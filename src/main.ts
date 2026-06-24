@@ -405,6 +405,25 @@ function render(): void {
         void dismissSession(v.key);
       },
     );
+    // Copy the resume command for this exact session, so you can paste it into the
+    // terminal you want (the way to reach a specific agent when several share one
+    // editor window — Windows can't focus an individual terminal tab).
+    card.querySelector<HTMLButtonElement>(".card-resume")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = v.key.session_id;
+      const cmd = v.source === "codex" ? `codex resume ${id}` : `claude --resume ${id}`;
+      const btn = e.currentTarget as HTMLButtonElement;
+      void navigator.clipboard
+        .writeText(cmd)
+        .then(() => {
+          const orig = btn.textContent;
+          btn.textContent = "✓";
+          window.setTimeout(() => {
+            btn.textContent = orig;
+          }, 1000);
+        })
+        .catch(() => {});
+    });
     // Click to jump to the session's editor window. Works for local sessions and
     // for remote ones opened via VS Code/Cursor Remote-SSH (window runs locally).
     if (v.cwd) {

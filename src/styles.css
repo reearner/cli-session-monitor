@@ -169,6 +169,41 @@ body {
   align-items: center;
   gap: 6px;
 }
+/* Short session id — distinguishes cards that share a directory. */
+.sid {
+  flex: none;
+  color: var(--muted);
+  font: 600 10px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
+  opacity: 0.7;
+}
+/* Copy-resume (⧉) button — right group with close, subtle until hover. */
+.card-resume {
+  margin-left: auto;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  line-height: 1;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s;
+}
+.card:hover .card-resume {
+  opacity: 0.65;
+}
+.card-resume:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
 /* Close (×) button — right end of the head, subtle until hover. */
 .card-close {
   margin-left: auto;

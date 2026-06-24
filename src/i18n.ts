@@ -32,6 +32,10 @@ const STR: Record<string, Entry> = {
     en: "Close this card (reappears when the session acts again)",
     zh: "关闭此卡片（会话再次活动时会重新出现）",
   },
+  "card.copyResume": {
+    en: "Copy the resume command — paste it into the terminal you want this session in",
+    zh: "复制恢复命令——粘到你想让该会话进入的终端",
+  },
   "card.launchDir": { en: "Launch dir: {dir}", zh: "启动目录：{dir}" },
   "card.estimate": { en: "est.", zh: "估算" },
   "card.clickRemote": {
