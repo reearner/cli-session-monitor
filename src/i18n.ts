@@ -122,8 +122,8 @@ const STR: Record<string, Entry> = {
   "set.remoteScript": { en: "Remote script", zh: "远端脚本" },
   "set.exportFailed": { en: "Export failed: {err}", zh: "导出失败：{err}" },
   "set.exportOk": {
-    en: "Exported: {path}\n① Copy it to the remote and run: bash remote-agent.sh\n   Codex is automatic; for Claude run: bash remote-agent.sh --install-claude\n   (remove later with: bash remote-agent.sh --uninstall)\n② Local subscribe topic: {topic} — restart this app to see the remote session.",
-    zh: "已导出：{path}\n① 拷到远端并运行：bash remote-agent.sh\n   Codex 自动纳入;监控 Claude 运行:bash remote-agent.sh --install-claude\n   (以后卸载:bash remote-agent.sh --uninstall)\n② 本地订阅主题:{topic} —— 重启本应用即可看到该远端会话。",
+    en: "Exported: {path}\n① Copy it to the remote and run: bash remote-agent.sh\n   Codex is automatic; for Claude run: bash remote-agent.sh --install-claude\n   (remove later with: bash remote-agent.sh --uninstall)\n② Subscribed to topic: {topic} — the remote session appears once its agent is running.",
+    zh: "已导出：{path}\n① 拷到远端并运行：bash remote-agent.sh\n   Codex 自动纳入;监控 Claude 运行:bash remote-agent.sh --install-claude\n   (以后卸载:bash remote-agent.sh --uninstall)\n② 已订阅主题:{topic} —— 远端 agent 跑起来后,该会话就会出现。",
   },
 };
 

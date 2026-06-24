@@ -50,8 +50,15 @@ entry, **Remove old notify** cleans it up.)
 
 Each session is one card:
 
-- **Status dot + label** — `Running`, `Waiting for input`, or `Idle`. A finished
-  turn is shown as *waiting for input* (it's your turn to respond).
+- **Status dot + label** — four states, color-coded:
+  - 🔵 **Running** — the agent is working.
+  - 🟢 **Replied** — it finished its turn; your turn to type.
+  - 🟡 **Needs your input** — it's blocked waiting for your choice/approval (a
+    Claude permission prompt / a Codex approval) before it can continue.
+  - ⚪ **Idle** — finished a while ago (fades after the "keep finished" minutes).
+  - The card that *just* changed pulses briefly so you can spot it. (Codex has no
+    "needs your input" state — its log can't reliably tell an approval pause from
+    a long-running command.)
 - **Live timer** — counts up while running; shows the last run's duration when
   done. Codex turns carry an **`est.`** badge because their timing is approximate.
 - **`▸` launch directory** and **`🪟` matched editor window** (or *No matching

@@ -10,6 +10,7 @@
   --done: #22c55e;
   --idle: #6b7280;
   --accent: #3b82f6;
+  --danger: #ef4444;
 }
 
 * {
@@ -44,7 +45,12 @@ body {
   -webkit-app-region: drag; /* draggable frameless window */
 }
 .title {
+  /* Not a drag region: it's the click-to-collapse target, and an OS drag region
+     swallows the click on any micro-movement. Drag the panel by the rest of the
+     top bar. */
+  -webkit-app-region: no-drag;
   font-weight: 600;
+  cursor: pointer;
 }
 .icon-btn {
   -webkit-app-region: no-drag;
@@ -114,6 +120,30 @@ body {
       0 0 0 2px var(--alert),
       0 0 12px 2px var(--alert);
   }
+}
+
+/* Brief feedback when a card click/Enter finds no focusable window. */
+.card.jump-failed {
+  animation: card-fail-kf 1.1s ease-in-out;
+}
+@keyframes card-fail-kf {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  20%,
+  70% {
+    box-shadow: 0 0 0 2px var(--danger);
+  }
+}
+
+/* Visible keyboard focus for interactive elements (cards + buttons). */
+.card.openable:focus-visible,
+.icon-btn:focus-visible,
+.card-close:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .card.openable {
   cursor: pointer;

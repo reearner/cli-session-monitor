@@ -897,9 +897,13 @@ fn process_cwd(pid: u32) -> Option<String> {
             if len == 0 || buf_ptr == 0 {
                 return None;
             }
-            let mut w = vec![0u16; (len / 2) as usize];
+            // Round the u16 count UP so an odd byte-length can't make
+            // ReadProcessMemory write 1 byte past the buffer; decode only the
+            // whole u16s.
+            let count = (len as usize + 1) / 2;
+            let mut w = vec![0u16; count];
             read(buf_ptr, w.as_mut_ptr() as *mut c_void, len as usize)?;
-            Some(String::from_utf16_lossy(&w))
+            Some(String::from_utf16_lossy(&w[..(len as usize) / 2]))
         })();
         let _ = CloseHandle(h);
         result

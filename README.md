@@ -23,7 +23,7 @@
 > Collapses to a floating ball that docks to a screen edge; click a session to
 > jump straight to its editor window.
 
-> Status: **early development (0.1.0)**. Windows-first. MIT-licensed.
+> Status: **early development**. Windows-first. MIT-licensed.
 
 <p align="center">
   <img src="docs/demo.gif" width="640" alt="The widget showing several CLI sessions with live status, timers, and click-to-jump"/>
@@ -49,8 +49,10 @@ tab-switching to check.
 
 ## Features
 
-- 🟢 **Live status per session** — `running` (with a live timer), `waiting for
-  your input`, or `idle`; desktop notification + flash when a turn finishes.
+- 🟢 **Live status per session** — color-coded: **running** (blue, live timer),
+  **replied** (green — turn finished, your turn), **needs your input** (amber —
+  blocked on a choice/approval), or **idle**; desktop notification + flash when a
+  turn finishes, and the card that just changed pulses.
 - 🫧 **Floating-ball mode** — collapses to a small orb that docks to the nearest
   screen edge as a thin bar showing counts (▶ running / ! awaiting input);
   hidden from the taskbar and Alt-Tab; remembers its position across restarts.
@@ -84,9 +86,9 @@ Windows 11.
    from its rollout files. Optionally set the idle threshold, autostart, and the
    remote relay here too.
 2. **Read status at a glance** — one card per session with a colored dot + label
-   (running / waiting for input / idle) and a live timer. The card whose editor
-   window you're currently in is **highlighted**. (UI follows your locale —
-   English / 中文.)
+   (running / replied / needs your input / idle) and a live timer; the card that
+   just changed pulses. The card whose editor window you're currently in is
+   **highlighted**. (UI follows your locale — English / 中文.)
 3. **Click a card** to focus its **Cursor / VS Code** window (including ones
    opened via **Remote-SSH**). Each card also shows its launch directory (`▸`)
    and the matched window (`🪟`).

@@ -415,15 +415,33 @@ function render(): void {
       // sessions only focus (can't open a remote folder locally).
       const create = !remote;
       card.classList.add("openable");
+      card.tabIndex = 0; // keyboard-focusable
+      card.setAttribute("role", "button");
       card.title = remote
         ? t("card.clickRemote")
         : t("card.clickLocal", { dir: v.cwd });
-      card.addEventListener("click", () => {
+      const activate = () => {
         if (alertKey === keyId(v.key)) {
           alertKey = null;
+          if (alertTimer) {
+            window.clearTimeout(alertTimer);
+            alertTimer = undefined;
+          }
           card.classList.remove("alerted");
         }
-        void openSession(v.cwd, v.host, create);
+        openSession(v.cwd, v.host, create).catch(() => {
+          // No focusable window found — give a brief visual nudge instead of
+          // failing silently.
+          card.classList.add("jump-failed");
+          window.setTimeout(() => card.classList.remove("jump-failed"), 1200);
+        });
+      };
+      card.addEventListener("click", activate);
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          activate();
+        }
       });
     }
     sessionsEl.append(card);
