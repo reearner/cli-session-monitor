@@ -7,6 +7,7 @@
 mod event;
 pub mod installer;
 pub mod paths;
+pub mod pathmatch;
 
 pub use event::{Event, EventKind, SessionKey, Source, SCHEMA_VERSION};
 pub use paths::host_name;

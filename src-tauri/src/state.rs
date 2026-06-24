@@ -171,10 +171,18 @@ impl StateMachine {
                 if !ev.cwd.is_empty() {
                     s.cwd = ev.cwd;
                 }
+                // Only notify on the TRANSITION into waiting — Claude's Notification
+                // hook can fire several times during one pause, and re-emitting would
+                // pop a duplicate toast each time.
+                let entering = s.status != SessionStatus::Waiting;
                 s.status = SessionStatus::Waiting; // keep run_started_at (timer continues)
                 s.last_event_at = ev.ts;
                 s.done_since = None;
-                vec![Effect::AwaitingInput(key)]
+                if entering {
+                    vec![Effect::AwaitingInput(key)]
+                } else {
+                    Vec::new()
+                }
             }
             EventKind::RunEnd => {
                 let s = self
@@ -372,21 +380,15 @@ fn status_rank(s: SessionStatus) -> u8 {
     }
 }
 
-/// Normalize a dir for comparison: lowercase, `\`-separated, no trailing slash.
+/// Normalize a dir for comparison. Delegates to the shared `csm_core` impl so
+/// the state machine and the app normalize identically (single source of truth).
 fn norm_dir(s: &str) -> String {
-    s.trim()
-        .to_lowercase()
-        .replace('/', "\\")
-        .trim_end_matches('\\')
-        .to_string()
+    csm_core::pathmatch::normalize_dir(s)
 }
 
 /// True if two dirs are the same or one is an ancestor of the other.
 fn dir_overlap(a: &str, b: &str) -> bool {
-    let (a, b) = (norm_dir(a), norm_dir(b));
-    !a.is_empty()
-        && !b.is_empty()
-        && (a == b || a.starts_with(&format!("{b}\\")) || b.starts_with(&format!("{a}\\")))
+    csm_core::pathmatch::dir_overlap(a, b)
 }
 
 #[cfg(test)]

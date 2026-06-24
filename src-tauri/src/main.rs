@@ -569,61 +569,7 @@ fn enumerate_top_windows() -> Vec<(windows::Win32::Foundation::HWND, String)> {
 /// CLI isn't a process on this machine (it's matched by host instead).
 #[cfg(windows)]
 fn cli_editor_hints() -> HashMap<String, &'static str> {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
-        TH32CS_SNAPPROCESS,
-    };
-    // pid -> (exe name lowercased, parent pid); plus the CLI processes found.
-    let mut procs: HashMap<u32, (String, u32)> = HashMap::new();
-    let mut clis: Vec<(u32, String)> = Vec::new();
-    unsafe {
-        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
-            return HashMap::new();
-        };
-        let mut entry = PROCESSENTRY32W {
-            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
-            ..Default::default()
-        };
-        if Process32FirstW(snap, &mut entry).is_ok() {
-            loop {
-                let end = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
-                let name = String::from_utf16_lossy(&entry.szExeFile[..end]).to_lowercase();
-                if name == "codex.exe" || name == "claude.exe" {
-                    if let Some(cwd) = process_cwd(entry.th32ProcessID) {
-                        clis.push((entry.th32ProcessID, normalize_dir(&cwd)));
-                    }
-                }
-                procs.insert(entry.th32ProcessID, (name, entry.th32ParentProcessID));
-                if Process32NextW(snap, &mut entry).is_err() {
-                    break;
-                }
-            }
-        }
-        let _ = CloseHandle(snap);
-    }
-    let mut out: HashMap<String, &'static str> = HashMap::new();
-    for (pid, dir) in clis {
-        let mut cur = pid;
-        for _ in 0..24 {
-            let Some((name, ppid)) = procs.get(&cur) else {
-                break;
-            };
-            if name == "cursor.exe" {
-                out.insert(dir, "cursor");
-                break;
-            }
-            if name == "code.exe" {
-                out.insert(dir, "code");
-                break;
-            }
-            if *ppid == 0 || *ppid == cur {
-                break;
-            }
-            cur = *ppid;
-        }
-    }
-    out
+    cli_snapshot().editor_hints.clone()
 }
 
 /// Among `wins`, pick the index of the Cursor/VS Code window best matching this
@@ -799,27 +745,59 @@ fn focus_editor_window(_cwd: &str, _host: &str) -> bool {
     false
 }
 
-/// Normalize a directory for comparison: lowercase, `/`→`\`, no trailing slash.
+/// Normalize a directory for comparison. Delegates to the shared implementation
+/// so the app and the state machine normalize identically (single source).
 fn normalize_dir(p: &str) -> String {
-    let s = p.to_lowercase().replace('/', "\\");
-    s.trim_end_matches('\\').to_string()
+    csm_core::pathmatch::normalize_dir(p)
 }
 
 /// Working directories of running `codex.exe` / `claude.exe` processes. A CLI is
 /// an interactive process that stays alive between turns, so this reliably tells
 /// whether a session is actually open (unlike a file's mtime). Dirs normalized.
+/// A snapshot of the running CLI processes: their launch dirs (for discovery /
+/// is-it-open) and the editor each is hosted in (for jump tie-breaking). Built in
+/// ONE process-table walk and cached briefly, so the ~1.2s foreground poll and the
+/// 30s discovery scan don't each re-enumerate every process + read each CLI's PEB.
 #[cfg(windows)]
-fn running_cli_dirs() -> Vec<(CliSource, String)> {
+struct CliSnapshot {
+    dirs: Vec<(CliSource, String)>,
+    editor_hints: HashMap<String, &'static str>,
+}
+
+#[cfg(windows)]
+static CLI_CACHE: Mutex<Option<(i64, std::sync::Arc<CliSnapshot>)>> = Mutex::new(None);
+
+/// Cached `CliSnapshot` (rebuilt at most every `TTL_MS`).
+#[cfg(windows)]
+fn cli_snapshot() -> std::sync::Arc<CliSnapshot> {
+    const TTL_MS: i64 = 1500;
+    let now = now_ms();
+    if let Some((ts, snap)) = CLI_CACHE.lock().unwrap().as_ref() {
+        if now - *ts < TTL_MS {
+            return snap.clone();
+        }
+    }
+    let snap = std::sync::Arc::new(build_cli_snapshot());
+    *CLI_CACHE.lock().unwrap() = Some((now, snap.clone()));
+    snap
+}
+
+#[cfg(windows)]
+fn build_cli_snapshot() -> CliSnapshot {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
-
-    let mut out = Vec::new();
+    // One pass: pid -> (exe name lowercased, parent pid), plus each running CLI.
+    let mut procs: HashMap<u32, (String, u32)> = HashMap::new();
+    let mut clis: Vec<(u32, CliSource, String)> = Vec::new();
     unsafe {
         let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
-            return out;
+            return CliSnapshot {
+                dirs: Vec::new(),
+                editor_hints: HashMap::new(),
+            };
         };
         let mut entry = PROCESSENTRY32W {
             dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
@@ -836,9 +814,10 @@ fn running_cli_dirs() -> Vec<(CliSource, String)> {
                 };
                 if let Some(src) = source {
                     if let Some(cwd) = process_cwd(entry.th32ProcessID) {
-                        out.push((src, normalize_dir(&cwd)));
+                        clis.push((entry.th32ProcessID, src, normalize_dir(&cwd)));
                     }
                 }
+                procs.insert(entry.th32ProcessID, (name, entry.th32ParentProcessID));
                 if Process32NextW(snap, &mut entry).is_err() {
                     break;
                 }
@@ -846,7 +825,37 @@ fn running_cli_dirs() -> Vec<(CliSource, String)> {
         }
         let _ = CloseHandle(snap);
     }
-    out
+    // Launch dirs + the editor each CLI runs under (walk its parent chain to a
+    // Cursor.exe / Code.exe ancestor hosting its integrated terminal).
+    let mut dirs = Vec::with_capacity(clis.len());
+    let mut editor_hints: HashMap<String, &'static str> = HashMap::new();
+    for (pid, src, dir) in clis {
+        dirs.push((src, dir.clone()));
+        let mut cur = pid;
+        for _ in 0..24 {
+            let Some((name, ppid)) = procs.get(&cur) else {
+                break;
+            };
+            if name == "cursor.exe" {
+                editor_hints.insert(dir, "cursor");
+                break;
+            }
+            if name == "code.exe" {
+                editor_hints.insert(dir, "code");
+                break;
+            }
+            if *ppid == 0 || *ppid == cur {
+                break;
+            }
+            cur = *ppid;
+        }
+    }
+    CliSnapshot { dirs, editor_hints }
+}
+
+#[cfg(windows)]
+fn running_cli_dirs() -> Vec<(CliSource, String)> {
+    cli_snapshot().dirs.clone()
 }
 
 /// Read a process's current working directory from its PEB (x64). Returns None
@@ -1017,10 +1026,13 @@ fn export_agent_script(state: State<AppState>) -> Result<String, String> {
     if cfg.relay_topic.trim().is_empty() {
         return Err(i18n::resolve(&cfg.language).export_need_topic().into());
     }
+    // Single-quote values for the generated bash (Rust's {:?} is NOT shell-safe:
+    // it wouldn't escape $, backticks, or `!` in a double-quoted bash context).
+    let sh_quote = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
     let token_line = if cfg.relay_token.trim().is_empty() {
         String::new()
     } else {
-        format!("export CSM_RELAY_TOKEN={:?}", cfg.relay_token)
+        format!("export CSM_RELAY_TOKEN={}", sh_quote(&cfg.relay_token))
     };
     // Raw template (literal bash) + placeholder substitution — avoids the {{ }}
     // escaping pitfalls of format! for a script this size.
@@ -1098,8 +1110,8 @@ echo "csm-agent -> $CSM_RELAY_URL/$CSM_RELAY_TOPIC"
 exec "$AGENT"
 "#;
     let script = template
-        .replace("@@URL@@", &format!("{:?}", cfg.relay_url))
-        .replace("@@TOPIC@@", &format!("{:?}", cfg.relay_topic))
+        .replace("@@URL@@", &sh_quote(&cfg.relay_url))
+        .replace("@@TOPIC@@", &sh_quote(&cfg.relay_topic))
         .replace("@@TOKEN@@", &token_line);
     let path = csm_core::paths::data_dir().join("remote-agent.sh");
     if let Some(parent) = path.parent() {
