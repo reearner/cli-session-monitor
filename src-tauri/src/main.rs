@@ -36,6 +36,9 @@ struct AppState {
     relay_tx: Mutex<Option<std::sync::mpsc::Sender<Event>>>,
     /// Stop flag for the current relay subscription thread (toggled on change).
     relay_stop: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>,
+    /// Whether the relay subscription stream is currently connected (for the
+    /// Settings indicator). Shared with the running NtfySource.
+    relay_connected: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// Remembered editor per directory (normalized cwd -> "cursor"/"code"),
     /// learned when a window is matched, so reopening a closed session uses the
     /// right editor instead of trying all of them.
@@ -49,10 +52,12 @@ fn start_relay(app: &AppHandle, cfg: &Config) {
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
     let state = app.state::<AppState>();
+    use std::sync::atomic::Ordering;
     // Signal the previous subscription (if any) to exit.
     if let Some(flag) = state.relay_stop.lock().unwrap().take() {
-        flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        flag.store(true, Ordering::SeqCst);
     }
+    state.relay_connected.store(false, Ordering::SeqCst);
     if cfg.relay_topic.trim().is_empty() {
         return;
     }
@@ -61,6 +66,7 @@ fn start_relay(app: &AppHandle, cfg: &Config) {
     };
     let stop = Arc::new(AtomicBool::new(false));
     *state.relay_stop.lock().unwrap() = Some(stop.clone());
+    let connected = state.relay_connected.clone();
     let (base, topic) = (cfg.relay_url.clone(), cfg.relay_topic.clone());
     let token = Some(cfg.relay_token.clone()).filter(|t| !t.is_empty());
     thread::spawn(move || {
@@ -70,6 +76,7 @@ fn start_relay(app: &AppHandle, cfg: &Config) {
             token,
             since: Some("5m".to_string()),
             stop,
+            connected: Some(connected),
         }
         .run(tx);
     });
@@ -1121,6 +1128,33 @@ exec "$AGENT"
     Ok(path.display().to_string())
 }
 
+/// Whether a relay topic is configured (`subscribed`) and whether its
+/// subscription stream is currently open (`connected`) — for the Settings tag.
+#[derive(serde::Serialize)]
+struct RelayStatus {
+    subscribed: bool,
+    connected: bool,
+}
+
+#[tauri::command]
+fn relay_status(state: State<AppState>) -> RelayStatus {
+    let subscribed = !state.config.lock().unwrap().relay_topic.trim().is_empty();
+    let connected = state
+        .relay_connected
+        .load(std::sync::atomic::Ordering::SeqCst);
+    RelayStatus {
+        subscribed,
+        connected,
+    }
+}
+
+/// Fire a test desktop notification so the user can verify notifications work.
+#[tauri::command]
+fn test_notification(app: AppHandle, state: State<AppState>) {
+    let cfg = state.config.lock().unwrap().clone();
+    notify::test(&app, &cfg);
+}
+
 #[tauri::command]
 fn uninstall_integration(target: String) -> Result<InstallOutcome, String> {
     match target.as_str() {
@@ -1526,6 +1560,7 @@ fn main() {
             config: Mutex::new(config),
             relay_tx: Mutex::new(None),
             relay_stop: Mutex::new(None),
+            relay_connected: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             editor_map: Mutex::new(HashMap::new()),
         })
         .invoke_handler(tauri::generate_handler![
@@ -1536,6 +1571,8 @@ fn main() {
             install_integration,
             uninstall_integration,
             export_agent_script,
+            relay_status,
+            test_notification,
             save_window_pos,
             save_window_size,
             set_resizable,

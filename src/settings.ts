@@ -6,6 +6,8 @@ import {
   installIntegration,
   uninstallIntegration,
   exportAgentScript,
+  relayStatus,
+  testNotification,
   optimizeEditorJump,
   revertEditorJump,
   editorJumpStatus,
@@ -100,6 +102,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
       language: "auto",
       panel_w: 360,
       panel_h: 640,
+      onboarded: true,
     };
   }
 
@@ -179,6 +182,15 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
       void persist();
     }),
   );
+
+  // Quick check that desktop notifications actually reach you.
+  {
+    const row = el("div", "integration");
+    const btn = el("button", "btn ghost", t("set.testNotify")) as HTMLButtonElement;
+    btn.addEventListener("click", () => void testNotification());
+    row.append(el("span", "int-name", "🔔"), btn);
+    container.append(row);
+  }
 
   // ---- Integration ----
   container.append(el("h2", undefined, t("set.integrations")));
@@ -305,6 +317,34 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
   // ---- Remote relay (ntfy): see sessions from a remote server, no SSH ----
   container.append(el("h2", undefined, t("set.remote")));
   container.append(el("p", "note", t("set.remoteNote")));
+  // Live status: is a topic set, and is the subscription stream actually open?
+  {
+    const row = el("div", "integration");
+    const tag = el("span", "ok-tag", t("set.checking"));
+    row.append(el("span", "int-name", t("set.relayState")), tag);
+    container.append(row);
+    const refreshRelay = async () => {
+      try {
+        const st = await relayStatus();
+        if (!st.subscribed) {
+          tag.textContent = t("set.relayOff");
+          tag.className = "ok-tag off";
+        } else {
+          tag.textContent = st.connected ? t("set.relayConnected") : t("set.relayConnecting");
+          tag.className = st.connected ? "ok-tag" : "ok-tag off";
+        }
+      } catch {
+        tag.textContent = t("set.statusUnknown");
+        tag.className = "ok-tag off";
+      }
+    };
+    void refreshRelay();
+    // Re-check a couple of times so a freshly-(re)started subscription flips to
+    // "connected" without a persistent polling interval (which would leak on
+    // re-render). One-shot timeouts self-clear.
+    window.setTimeout(() => void refreshRelay(), 1500);
+    window.setTimeout(() => void refreshRelay(), 4000);
+  }
   const topicRow = inputRow(t("set.topic"), cfg.relay_topic, t("set.topicPlaceholder"), (v) => {
     cfg.relay_topic = v;
     void persist();

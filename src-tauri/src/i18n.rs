@@ -180,4 +180,14 @@ impl Lang {
             Lang::Zh => "请先设置订阅主题（导出时会自动生成）。",
         }
     }
+    /// Title + body for the "test notification" button.
+    pub fn notify_test(self) -> (String, String) {
+        match self {
+            Lang::En => (
+                "CLI Session Monitor".into(),
+                "Test notification — notifications are working.".into(),
+            ),
+            Lang::Zh => ("CLI Session Monitor".into(), "测试通知 —— 通知功能正常。".into()),
+        }
+    }
 }

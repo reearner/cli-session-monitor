@@ -1,9 +1,10 @@
 import "./styles.css";
-import type { SessionView, SessionKey } from "./types";
+import type { SessionView, SessionKey, Config } from "./types";
 import { keyId } from "./types";
 import {
   getSnapshot,
   getConfig,
+  setConfig,
   onSessionsUpdate,
   onFlash,
   saveWindowPos,
@@ -672,6 +673,7 @@ window.addEventListener("csm:lang", (e) => {
 async function init(): Promise<void> {
   let savedX: number | null = null;
   let savedY: number | null = null;
+  let onboardCfg: Config | null = null;
   try {
     const cfg = await getConfig();
     lite = cfg.lightweight;
@@ -682,11 +684,21 @@ async function init(): Promise<void> {
       Math.max(MIN_PANEL_W, cfg.panel_w),
       Math.max(MIN_PANEL_H, cfg.panel_h),
     );
+    if (!cfg.onboarded) onboardCfg = cfg;
   } catch {
     lite = false;
   }
   applyStaticTexts();
   applyMode();
+
+  // First-ever launch: open Settings once so new users can enable the Claude Code
+  // integration instead of staring at an empty panel; remember we've done it.
+  if (onboardCfg) {
+    settingsEl.hidden = false;
+    void renderSettings(settingsEl);
+    onboardCfg.onboarded = true;
+    void setConfig(onboardCfg);
+  }
 
   try {
     myHost = await localHost();

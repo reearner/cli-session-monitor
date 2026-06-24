@@ -68,6 +68,10 @@ pub struct Config {
     pub panel_w: u32,
     #[serde(default = "default_panel_h")]
     pub panel_h: u32,
+
+    /// Whether first-run onboarding (auto-open Settings once) has happened.
+    #[serde(default)]
+    pub onboarded: bool,
 }
 
 fn default_panel_w() -> u32 {
@@ -114,6 +118,7 @@ impl Default for Config {
             language: default_language(),
             panel_w: default_panel_w(),
             panel_h: default_panel_h(),
+            onboarded: false,
         }
     }
 }
@@ -180,6 +185,7 @@ mod tests {
             language: "zh".to_string(),
             panel_w: 400,
             panel_h: 700,
+            onboarded: true,
         };
         cfg.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), cfg);

@@ -49,6 +49,14 @@ pub fn on_completed(app: &AppHandle, key: &SessionKey, snapshot: &[SessionView],
     let _ = app.notification().builder().title(title).body(body).show();
 }
 
+/// Fire a test notification (ignores the `notifications` toggle on purpose, so
+/// the user can confirm the OS even lets toasts through) so they can verify
+/// notifications/sound work.
+pub fn test(app: &AppHandle, config: &Config) {
+    let (title, body) = crate::i18n::resolve(&config.language).notify_test();
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
 /// Fire a "waiting for your input/approval" notification for `key`.
 pub fn on_awaiting_input(
     app: &AppHandle,

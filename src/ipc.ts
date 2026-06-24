@@ -46,6 +46,14 @@ export const uninstallIntegration = (
 export const exportAgentScript = (): Promise<string> =>
   invoke<string>("export_agent_script");
 
+/** Relay subscription status: `subscribed` (a topic is set) + `connected` (the
+ *  subscription stream is currently open). */
+export const relayStatus = (): Promise<{ subscribed: boolean; connected: boolean }> =>
+  invoke("relay_status");
+
+/** Fire a test desktop notification so the user can verify notifications work. */
+export const testNotification = (): Promise<void> => invoke("test_notification");
+
 /** Persist the widget position (physical px) for next launch. */
 export const saveWindowPos = (x: number, y: number): Promise<void> =>
   invoke("save_window_pos", { x, y });

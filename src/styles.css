@@ -472,6 +472,9 @@ body.docked .pill-counts {
 body.docked.edge-left .pill-counts,
 body.docked.edge-right .pill-counts {
   flex-direction: column;
+  /* tighter on the narrow vertical strip so two-digit counts (e.g. ▶12) fit */
+  font-size: 9px;
+  letter-spacing: -0.5px;
 }
 .pc-run,
 .pc-wait,

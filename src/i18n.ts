@@ -106,6 +106,12 @@ const STR: Record<string, Entry> = {
   "set.revert": { en: "Revert", zh: "还原" },
   "set.revertFailed": { en: "Revert failed: {err}", zh: "还原失败：{err}" },
 
+  "set.testNotify": { en: "Send a test notification", zh: "发送测试通知" },
+  "set.relayState": { en: "Relay", zh: "中继" },
+  "set.relayOff": { en: "Off (no topic)", zh: "未启用（无主题）" },
+  "set.relayConnecting": { en: "Connecting…", zh: "连接中…" },
+  "set.relayConnected": { en: "Connected ✓", zh: "已连接 ✓" },
+
   "set.remote": { en: "Remote (relay)", zh: "远程（中继）" },
   "set.remoteNote": {
     en: "Run csm-agent on a remote server publishing to the same topic; subscribe here to see its sessions. Changes apply live (auto-reconnect, replaying the last 5 minutes).",

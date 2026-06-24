@@ -46,6 +46,17 @@ pub struct NtfySource {
     pub since: Option<String>,
     /// Set to true to make the subscription exit (used to switch topics live).
     pub stop: Arc<AtomicBool>,
+    /// Reflects whether the subscription stream is currently open, so the UI can
+    /// show a "connected" indicator. None = don't track.
+    pub connected: Option<Arc<AtomicBool>>,
+}
+
+impl NtfySource {
+    fn set_connected(&self, v: bool) {
+        if let Some(c) = &self.connected {
+            c.store(v, Ordering::SeqCst);
+        }
+    }
 }
 
 impl Source for NtfySource {
@@ -56,11 +67,13 @@ impl Source for NtfySource {
         }
         loop {
             if self.stop.load(Ordering::SeqCst) {
+                self.set_connected(false);
                 return;
             }
             if let Err(e) = self.stream(&url, &tx) {
                 eprintln!("ntfy: stream error: {e}");
             }
+            self.set_connected(false);
             if self.stop.load(Ordering::SeqCst) {
                 return;
             }
@@ -81,6 +94,7 @@ impl NtfySource {
             req = req.set("Authorization", &format!("Bearer {t}"));
         }
         let reader = BufReader::new(req.call()?.into_reader());
+        self.set_connected(true); // stream opened
         for line in reader.lines() {
             if self.stop.load(Ordering::SeqCst) {
                 return Ok(());

@@ -41,6 +41,7 @@ export interface Config {
   language: string;
   panel_w: number;
   panel_h: number;
+  onboarded: boolean;
 }
 
 export interface InstallOutcome {
