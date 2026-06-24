@@ -423,6 +423,13 @@ body.ball #app {
   /* replied: calm green, matches the green "Replied" cards (no pulse) */
   border-color: var(--done);
 }
+/* The DOCKED bar is too thin for manual move-threshold drag (a drag instantly
+   leaves the few-pixel strip and the webview stops sending move events), so it
+   uses an OS drag region — reliable dragging; a clean click still expands. The
+   round BALL keeps the manual drag (see src/main.ts) for fully reliable clicks. */
+body.docked .pill {
+  -webkit-app-region: drag;
+}
 /* acknowledged (user viewed the panel then collapsed): keep the amber state but
    stop the continuous pulse so it no longer nags */
 body.ack .pill.s-wait {

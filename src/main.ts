@@ -597,35 +597,33 @@ function flash(kind: "done" | "waiting"): void {
 // (those swallow the click on any micro-movement), so a press that stays put is a
 // reliable click, and a press that moves past a small threshold starts an OS
 // window drag instead. This is what makes clicking the docked bar dependable.
-let pillPress: { x: number; y: number } | null = null;
+//
+// Uses mouse events with WINDOW-level listeners attached on mousedown: while a
+// button is held, the browser keeps delivering mousemove to the window even when
+// the cursor leaves the (very thin) docked-bar window — so the move threshold is
+// reached and the drag starts. (Element-level pointermove / pointer capture is
+// unreliable here: moving off the few-pixel transparent strip loses the events.)
 let pillDragged = false;
-pillEl.addEventListener("pointerdown", (e) => {
-  pillPress = { x: e.screenX, y: e.screenY };
+pillEl.addEventListener("mousedown", (e) => {
+  // When docked, the thin bar uses an OS drag region (CSS) instead — manual
+  // move-threshold detection can't work on a few-pixel strip.
+  if (e.button !== 0 || docked) return;
+  const sx = e.screenX;
+  const sy = e.screenY;
   pillDragged = false;
-  // Capture the pointer so pointermove keeps firing after the cursor leaves the
-  // element — essential for the THIN docked bar, where a drag immediately moves
-  // the cursor off the strip (otherwise the move threshold is never reached).
-  try {
-    pillEl.setPointerCapture(e.pointerId);
-  } catch {
-    /* ignore */
-  }
-});
-pillEl.addEventListener("pointermove", (e) => {
-  if (!pillPress || pillDragged) return;
-  if (Math.abs(e.screenX - pillPress.x) > 4 || Math.abs(e.screenY - pillPress.y) > 4) {
-    pillDragged = true;
-    pillPress = null;
-    try {
-      pillEl.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
+  const onMove = (ev: MouseEvent) => {
+    if (Math.abs(ev.screenX - sx) > 4 || Math.abs(ev.screenY - sy) > 4) {
+      pillDragged = true;
+      cleanup();
+      void getCurrentWindow().startDragging();
     }
-    void getCurrentWindow().startDragging();
-  }
-});
-document.addEventListener("pointerup", () => {
-  pillPress = null;
+  };
+  const cleanup = () => {
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", cleanup);
+  };
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", cleanup);
 });
 
 // pill click -> expand (remember where the ball was so we can return it there).
