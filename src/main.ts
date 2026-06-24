@@ -138,6 +138,10 @@ let snapTimer: number | undefined;
 // While we move/resize the window ourselves, ignore the resulting onMoved events
 // (otherwise the snap-to-edge would fight our own dock/undock repositioning).
 let suppressSnap = false;
+// Last time a resize was observed. Resizing the panel from the top/left edge also
+// moves its top-left (firing onMoved); we must NOT treat that as a drag-to-edge,
+// or the snap would fight the user's resize and jitter — especially on big panels.
+let lastResizeAt = 0;
 // The ball's position right before expanding, so collapsing returns it there
 // instead of leaving it at the expanded panel's top-left (which then re-docks
 // from the wrong spot — the "jumps to the middle then the top" bug).
@@ -159,9 +163,12 @@ async function programmaticMove(fn: () => Promise<void>): Promise<void> {
   try {
     await fn();
   } finally {
+    // A bit longer than the move/resize debounce so the OS echo events from our
+    // own SetWindowPos (which can lag on a large window) are still suppressed and
+    // not mistaken for a user drag — the source of the resize "jitter".
     window.setTimeout(() => {
       suppressSnap = false;
-    }, 250);
+    }, 450);
   }
 }
 
@@ -754,8 +761,10 @@ async function init(): Promise<void> {
               /* ignore */
             }
           });
-        } else {
-          // full panel: snap flush to a nearby edge (keeps full size)
+        } else if (Date.now() - lastResizeAt >= 600) {
+          // full panel: snap flush to a nearby edge (keeps full size). Skip when a
+          // resize just happened — resizing from the top/left edge moves the
+          // top-left too, and snapping then would fight the user's drag (jitter).
           void snapPanelToEdge();
         }
       }, 300);
@@ -764,6 +773,7 @@ async function init(): Promise<void> {
     // Remember the user's manual resize of the full panel. Our own resizes set
     // suppressSnap (and the ball/bar are collapsed), so those are ignored.
     await getCurrentWindow().onResized(() => {
+      lastResizeAt = Date.now();
       if (suppressSnap || collapsed()) return;
       if (resizeTimer) window.clearTimeout(resizeTimer);
       resizeTimer = window.setTimeout(async () => {
