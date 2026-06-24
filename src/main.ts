@@ -602,12 +602,25 @@ let pillDragged = false;
 pillEl.addEventListener("pointerdown", (e) => {
   pillPress = { x: e.screenX, y: e.screenY };
   pillDragged = false;
+  // Capture the pointer so pointermove keeps firing after the cursor leaves the
+  // element — essential for the THIN docked bar, where a drag immediately moves
+  // the cursor off the strip (otherwise the move threshold is never reached).
+  try {
+    pillEl.setPointerCapture(e.pointerId);
+  } catch {
+    /* ignore */
+  }
 });
 pillEl.addEventListener("pointermove", (e) => {
   if (!pillPress || pillDragged) return;
   if (Math.abs(e.screenX - pillPress.x) > 4 || Math.abs(e.screenY - pillPress.y) > 4) {
     pillDragged = true;
     pillPress = null;
+    try {
+      pillEl.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
     void getCurrentWindow().startDragging();
   }
 });
