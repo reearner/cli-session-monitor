@@ -35,7 +35,6 @@ const pillText = document.getElementById("pill-text") as HTMLElement;
 const pcRun = document.getElementById("pc-run") as HTMLElement;
 const pcWait = document.getElementById("pc-wait") as HTMLElement;
 const pcDone = document.getElementById("pc-done") as HTMLElement;
-const pcIdle = document.getElementById("pc-idle") as HTMLElement;
 
 // The full-panel size. Mutable: loaded from config on startup and updated when
 // the user resizes the panel (the window is `resizable`). The ball/bar stay fixed.
@@ -357,20 +356,19 @@ function counts() {
 
 function updatePill(): void {
   const { running, waiting, done, idle } = counts();
-  // A finished turn (done) counts as "waiting for your input" too.
-  const awaiting = waiting + done;
-  const active = running + awaiting;
+  const active = running + waiting + done;
   // Ball: single number = active sessions.
   pillText.textContent = active ? String(active) : "";
-  // Docked bar: ▶running, !awaiting-input (waiting+done). Idle omitted from the
-  // thin bar (only shown in the full panel).
+  // Docked bar — color-matched to the cards so the strip can't be misread:
+  // ▶running (blue), !waiting (amber = needs your input), ✓done (green = replied).
+  // Idle is omitted from the thin bar (shown only in the full panel).
   pcRun.textContent = running ? `▶${running}` : "";
-  pcWait.textContent = awaiting ? `!${awaiting}` : "";
-  pcDone.textContent = "";
-  pcIdle.textContent = "";
+  pcWait.textContent = waiting ? `!${waiting}` : "";
+  pcDone.textContent = done ? `✓${done}` : "";
   void idle;
-  // color the orb / bar by the highest-priority status (awaiting first)
-  const cls = awaiting ? "s-wait" : running ? "s-run" : "s-idle";
+  // Color the orb / bar by the most-urgent state: needs-you (amber) > running
+  // (blue) > replied (green) > idle — same priority as the card ordering.
+  const cls = waiting ? "s-wait" : running ? "s-run" : done ? "s-done" : "s-idle";
   pillEl.className = "pill " + cls;
   pillDot.className = "pill-dot " + cls;
 }

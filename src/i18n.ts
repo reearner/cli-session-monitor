@@ -44,7 +44,6 @@ const STR: Record<string, Entry> = {
   "card.noWindowTitle": { en: "No matching editor window", zh: "没有匹配的编辑器窗口" },
 
   // ---- top bar / empty ----
-  "app.idle": { en: "Idle", zh: "空闲" },
   "app.settings": { en: "Settings", zh: "设置 / 接入" },
   "app.empty": {
     en: "No active sessions yet. Click here to open Settings and enable Claude Code (Codex needs nothing) — sessions then show up live.",

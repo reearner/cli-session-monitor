@@ -419,6 +419,10 @@ body.ball #app {
   border-color: var(--wait);
   animation: pulse 0.9s ease-in-out infinite;
 }
+.pill.s-done {
+  /* replied: calm green, matches the green "Replied" cards (no pulse) */
+  border-color: var(--done);
+}
 /* acknowledged (user viewed the panel then collapsed): keep the amber state but
    stop the continuous pulse so it no longer nags */
 body.ack .pill.s-wait {
@@ -471,8 +475,7 @@ body.docked.edge-right .pill-counts {
 }
 .pc-run,
 .pc-wait,
-.pc-done,
-.pc-idle {
+.pc-done {
   white-space: nowrap;
 }
 .pc-run {
@@ -484,13 +487,9 @@ body.docked.edge-right .pill-counts {
 .pc-done {
   color: var(--done);
 }
-.pc-idle {
-  color: var(--idle);
-}
 .pc-run:empty,
 .pc-wait:empty,
-.pc-done:empty,
-.pc-idle:empty {
+.pc-done:empty {
   display: none;
 }
 
