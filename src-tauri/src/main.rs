@@ -1319,8 +1319,23 @@ fn spawn_consumer(app: AppHandle, rx: std::sync::mpsc::Receiver<Event>) {
     // In demo mode show the in-app flash but don't raise OS toasts (no spamming
     // the notification center while recording).
     let demo = demo::enabled();
+    let local_host = csm_core::paths::host_name();
+    // Per-host clock offset (local_now - remote_ts), so a remote machine's clock
+    // being a few seconds off doesn't make the live timer read 0:00 or balloon.
+    let mut host_offset: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     thread::spawn(move || {
-        for ev in rx {
+        for mut ev in rx {
+            // Align a REMOTE event's timestamps to the local clock. Calibrate the
+            // offset only from near-real-time events (an `since=` replay of old
+            // events would otherwise poison it); applying a stable per-host offset
+            // preserves the relative spacing between a host's events.
+            if !ev.host.is_empty() && ev.host != local_host {
+                let skew = now_ms() - ev.ts;
+                if skew.abs() < NOTIFY_GRACE_MS {
+                    host_offset.insert(ev.host.clone(), skew);
+                }
+                ev.ts += host_offset.get(&ev.host).copied().unwrap_or(0);
+            }
             // Suppress notifications/flash for replayed/old events (e.g. ntfy
             // `since=` catch-up on connect) — still show the card, just don't nag.
             let fresh = now_ms() - ev.ts < NOTIFY_GRACE_MS;
