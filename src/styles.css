@@ -279,7 +279,6 @@ body {
 .host {
   color: var(--muted);
   font-size: 11px;
-  margin-left: auto;
   white-space: nowrap;
 }
 .cwd {

@@ -29,7 +29,7 @@ function statusText(s: Status): string {
  * Build a session card. Running cards carry `data-start` on the `.timer` so the
  * 1s tick in main.ts can update the elapsed time without a full re-render.
  */
-export function createCard(v: SessionView): HTMLElement {
+export function createCard(v: SessionView, localHost = ""): HTMLElement {
   const card = el("div", `card status-${v.status} src-${v.source}`);
   card.dataset.key = keyId(v.key);
 
@@ -37,15 +37,16 @@ export function createCard(v: SessionView): HTMLElement {
   // ("disc:..."), which isn't a resumable session id.
   const real = !v.key.session_id.startsWith("disc:");
 
-  // Lead with the PROJECT name (the dir's last segment) — that's what identifies
-  // which session this is. The CLI kind (Claude/Codex) is secondary, so it's a
-  // small muted tag rather than the headline.
+  // Headline = the PROJECT name (the dir's last segment) — that's what identifies
+  // the session. The parent dir (below) and the full path (hover) tell same-named
+  // projects apart, without repeating the name. The CLI kind moves to the footer.
   const project = v.cwd.split(/[\\/]/).filter(Boolean).pop() || v.cwd || "—";
+  const parent = v.cwd.replace(/[\\/][^\\/]+[\\/]*$/, "");
+
   const head = el("div", "card-head");
   const name = el("span", "project", project);
   name.title = v.cwd;
-  head.append(el("span", "dot"), name, el("span", "src-tag", sourceLabel(v.source)));
-  if (v.host) head.append(el("span", "host", v.host));
+  head.append(el("span", "dot"), name);
   // Short session id — tells apart two cards that share a directory (e.g. several
   // agents in one editor window).
   if (real) {
@@ -66,14 +67,27 @@ export function createCard(v: SessionView): HTMLElement {
   close.title = t("card.close");
   head.append(close);
 
-  const cwd = el("div", "cwd", "▸ " + v.cwd);
-  cwd.title = t("card.launchDir", { dir: v.cwd });
+  card.append(head);
+
+  // Parent directory only (so the project name isn't repeated). Hidden when there
+  // is none (e.g. a bare folder name).
+  if (parent && parent !== v.cwd) {
+    const dir = el("div", "cwd", "▸ " + parent);
+    dir.title = t("card.launchDir", { dir: v.cwd });
+    card.append(dir);
+  }
 
   // Filled asynchronously by main.ts with the matched editor window (or none).
   const winline = el("div", "winline", "");
   winline.hidden = true;
+  card.append(winline);
 
+  // Footer: CLI kind (demoted), remote host (only when remote), status, timer.
   const meta = el("div", "meta");
+  meta.append(el("span", "src-tag", sourceLabel(v.source)));
+  if (v.host && v.host !== localHost) {
+    meta.append(el("span", "host", v.host));
+  }
   meta.append(el("span", "status", statusText(v.status)));
 
   const timer = el("span", "timer");
@@ -93,6 +107,6 @@ export function createCard(v: SessionView): HTMLElement {
     meta.append(el("span", "badge", t("card.estimate")));
   }
 
-  card.append(head, cwd, winline, meta);
+  card.append(meta);
   return card;
 }

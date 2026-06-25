@@ -394,7 +394,7 @@ function render(): void {
   // full card list
   sessionsEl.replaceChildren();
   for (const v of sessions) {
-    const card = createCard(v);
+    const card = createCard(v, myHost);
     if (alertKey && keyId(v.key) === alertKey) card.classList.add("alerted");
     // Close button: hide this card (reappears on fresh activity). Stop the click
     // from bubbling to the card's jump-to-editor handler.
