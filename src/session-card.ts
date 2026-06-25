@@ -37,12 +37,15 @@ export function createCard(v: SessionView): HTMLElement {
   // ("disc:..."), which isn't a resumable session id.
   const real = !v.key.session_id.startsWith("disc:");
 
+  // Lead with the PROJECT name (the dir's last segment) — that's what identifies
+  // which session this is. The CLI kind (Claude/Codex) is secondary, so it's a
+  // small muted tag rather than the headline.
+  const project = v.cwd.split(/[\\/]/).filter(Boolean).pop() || v.cwd || "—";
   const head = el("div", "card-head");
-  head.append(
-    el("span", "dot"),
-    el("span", "source", sourceLabel(v.source)),
-    el("span", "host", v.host),
-  );
+  const name = el("span", "project", project);
+  name.title = v.cwd;
+  head.append(el("span", "dot"), name, el("span", "src-tag", sourceLabel(v.source)));
+  if (v.host) head.append(el("span", "host", v.host));
   // Short session id — tells apart two cards that share a directory (e.g. several
   // agents in one editor window).
   if (real) {

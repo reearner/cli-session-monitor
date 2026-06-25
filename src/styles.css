@@ -260,13 +260,27 @@ body {
     opacity: 0.25;
   }
 }
-.source {
+/* Project name — the card's headline (which session this is). */
+.project {
   font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 58%;
+}
+/* CLI kind (claude/codex) — secondary, small + muted. */
+.src-tag {
+  flex: none;
+  color: var(--muted);
+  font-size: 10px;
+  opacity: 0.75;
 }
 .host {
   color: var(--muted);
   font-size: 11px;
   margin-left: auto;
+  white-space: nowrap;
 }
 .cwd {
   color: var(--muted);
