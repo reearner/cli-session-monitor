@@ -47,6 +47,13 @@ const STR: Record<string, Entry> = {
   "card.noWindow": { en: "🪟 No matching window", zh: "🪟 未找到对应窗口" },
   "card.noWindowTitle": { en: "No matching editor window", zh: "没有匹配的编辑器窗口" },
 
+  // ---- auto-update ----
+  "update.available": { en: "Update {version} available", zh: "有新版本 {version}" },
+  "update.install": { en: "Install & restart", zh: "安装并重启" },
+  "update.installing": { en: "Installing…", zh: "安装中…" },
+  "update.later": { en: "Later", zh: "稍后" },
+  "update.failed": { en: "Update failed", zh: "更新失败" },
+
   // ---- top bar / empty ----
   "app.settings": { en: "Settings", zh: "设置 / 接入" },
   "app.empty": {

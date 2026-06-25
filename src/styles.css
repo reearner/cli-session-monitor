@@ -662,3 +662,24 @@ body.docked.flash-waiting .pill {
       0 0 10px 1px var(--alert);
   }
 }
+
+/* Auto-update banner — pinned to the bottom of the panel; in ball mode the tiny
+   window clips it, so it only shows in the expanded panel. */
+.update-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--accent);
+  font-size: 12px;
+}
+.update-text {
+  flex: 1;
+  color: var(--text);
+}

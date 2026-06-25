@@ -1575,6 +1575,7 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -1619,6 +1620,11 @@ fn main() {
         })
         .setup(move |app| {
             let handle = app.handle().clone();
+            // In-app auto-update (checked from the frontend on launch). Non-fatal:
+            // if it can't init, the app still runs.
+            let _ = app
+                .handle()
+                .plugin(tauri_plugin_updater::Builder::new().build());
             applog::line(&format!(
                 "[start] host={} idle_secs={} relay_topic={}",
                 csm_core::paths::host_name(),

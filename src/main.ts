@@ -20,6 +20,7 @@ import {
 import { createCard } from "./session-card";
 import { formatDuration } from "./timer";
 import { renderSettings } from "./settings";
+import { checkForUpdate } from "./updater";
 import { t, setLang } from "./i18n";
 import { getCurrentWindow, currentMonitor } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -879,6 +880,9 @@ async function init(): Promise<void> {
   window.setInterval(tickTimers, 1000);
   void pollForeground();
   window.setInterval(() => void pollForeground(), 1200);
+
+  // Check for an app update in the background (shows a banner if one is found).
+  void checkForUpdate();
 }
 
 void init();
