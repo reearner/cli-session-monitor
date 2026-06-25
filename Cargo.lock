@@ -478,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "cli-session-monitor"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "csm-core",
  "csm-watch",
@@ -607,7 +607,7 @@ dependencies = [
 
 [[package]]
 name = "csm-agent"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "csm-core",
  "csm-watch",
@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "csm-core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "dirs 5.0.1",
  "gethostname",
@@ -627,7 +627,7 @@ dependencies = [
 
 [[package]]
 name = "csm-reporter"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "csm-core",
  "serde",
@@ -638,7 +638,7 @@ dependencies = [
 
 [[package]]
 name = "csm-watch"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "csm-core",
  "notify",

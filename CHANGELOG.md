@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-06-25
+
+### Added
+- **Per-session short id** on each card, plus a **⧉ copy-resume button** that copies the exact resume command (`claude --resume <id>` / `codex resume <id>`) — so you can bring a specific session into the terminal you want when several agents share one editor window (Windows can't focus an individual terminal tab).
+- **Configurable retention**: keep idle local-session cards for **1 / 3 / 7 / 14 days** (Settings → "Keep idle sessions for"), so recurring sessions stay around; the session id is retained across restarts for the whole window.
+- **Relay status indicator** (Off / Connecting… / Connected ✓) and a **"Send a test notification"** button in Settings — to verify remote monitoring and notifications actually work.
+- **First-run onboarding**: Settings opens once on the first ever launch.
+- **Frontend tests** (vitest) wired into CI.
+
+### Changed
+- The **docked bar counts are color-matched to the cards** (▶ running / ! needs-you / ✓ replied), so a finished turn isn't miscounted as "awaiting input."
+- Docs corrected to the four status states (GUIDE en/zh, README); the exported remote-agent script shell-quotes the relay url/topic/token.
+
+### Fixed
+- Resizing the full panel from a top/left edge no longer jitters.
+- The thin **docked bar can be dragged** again (and clicking it stays reliable).
+- **Editor-window jump** disambiguates a folder open in **both Cursor and VS Code** (via the CLI's process ancestry); Chinese/Unicode folder paths verified.
+- The **remote live timer** is corrected for clock-skewed remote hosts.
+- A blocked "needs your input" pause no longer pops **duplicate notifications**.
+- `process_cwd` could read 1 byte past its buffer for an odd-length path.
+- Keyboard accessibility (cards focusable + focus rings) and a brief flash when a jump finds no window.
+- Performance: the running-process scan is cached (no full re-enumeration on every ~1.2s foreground poll); directory-normalization logic deduplicated into `csm-core`.
+
 ## [0.1.2] - 2026-06-22
 
 ### Added
