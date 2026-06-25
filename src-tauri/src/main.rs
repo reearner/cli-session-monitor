@@ -86,12 +86,9 @@ fn start_relay(app: &AppHandle, cfg: &Config) {
 /// — they're catch-up replays from the relay, not things happening right now.
 const NOTIFY_GRACE_MS: i64 = 60_000;
 
-/// Surface sessions whose on-disk files were touched within this window as idle
-/// (so already-open Claude/Codex windows show up before the user types). Rescan
-/// interval below catches newly-opened ones.
-const DISCOVER_WINDOW_SECS: u64 = 24 * 3600;
 // Rescan fairly often so a session that's open & waiting (e.g. paused at the
-// resume-session prompt, where no hook fires) shows up promptly.
+// resume-session prompt, where no hook fires) shows up promptly. The look-back
+// window (how far back to surface idle sessions) is config.discover_window_days.
 const DISCOVER_INTERVAL_SECS: u64 = 30;
 
 fn now_ms() -> i64 {
@@ -1213,7 +1210,19 @@ fn spawn_event_loop(app: AppHandle) {
         let local = csm_core::paths::host_name().to_lowercase();
         thread::spawn(move || loop {
             let cli_dirs = running_cli_dirs();
-            let raw = csm_watch::discover_sessions(DISCOVER_WINDOW_SECS);
+            // User-configurable retention: keep surfacing local sessions used in
+            // the last N days (recurring sessions stay around).
+            let window_secs = {
+                let days = app_disc
+                    .state::<AppState>()
+                    .config
+                    .lock()
+                    .unwrap()
+                    .discover_window_days
+                    .max(1) as u64;
+                days * 24 * 3600
+            };
+            let raw = csm_watch::discover_sessions(window_secs);
             // Diagnostics only when CSM_DEBUG is on (also skips the window scan).
             if applog::enabled() {
                 let titles = all_visible_titles();

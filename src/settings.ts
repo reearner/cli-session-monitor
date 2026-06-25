@@ -103,6 +103,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
       panel_w: 360,
       panel_h: 640,
       onboarded: true,
+      discover_window_days: 1,
     };
   }
 
@@ -158,6 +159,15 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
           cfg.idle_threshold_secs = m * 60;
           void persist();
         }
+      },
+    ),
+    selectRow(
+      t("set.keepDays"),
+      String(cfg.discover_window_days || 1),
+      [1, 3, 7, 14].map((n) => ({ value: String(n), label: `${n} ${t("set.daysUnit")}` })),
+      (v) => {
+        cfg.discover_window_days = Math.max(1, parseInt(v, 10) || 1);
+        void persist();
       },
     ),
   );

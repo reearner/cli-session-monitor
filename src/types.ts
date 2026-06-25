@@ -42,6 +42,7 @@ export interface Config {
   panel_w: number;
   panel_h: number;
   onboarded: boolean;
+  discover_window_days: number;
 }
 
 export interface InstallOutcome {

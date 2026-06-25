@@ -72,6 +72,15 @@ pub struct Config {
     /// Whether first-run onboarding (auto-open Settings once) has happened.
     #[serde(default)]
     pub onboarded: bool,
+
+    /// How many days back to keep surfacing on-disk LOCAL sessions as (idle)
+    /// cards, so recurring sessions stay around. Min 1.
+    #[serde(default = "default_discover_days")]
+    pub discover_window_days: u32,
+}
+
+fn default_discover_days() -> u32 {
+    1
 }
 
 fn default_panel_w() -> u32 {
@@ -119,6 +128,7 @@ impl Default for Config {
             panel_w: default_panel_w(),
             panel_h: default_panel_h(),
             onboarded: false,
+            discover_window_days: default_discover_days(),
         }
     }
 }
@@ -186,6 +196,7 @@ mod tests {
             panel_w: 400,
             panel_h: 700,
             onboarded: true,
+            discover_window_days: 7,
         };
         cfg.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), cfg);

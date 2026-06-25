@@ -66,6 +66,8 @@ const STR: Record<string, Entry> = {
     zh: "轻量模式（缩成小胶囊，完成/待处理时闪烁）",
   },
   "set.keepMinutes": { en: "Keep finished for (minutes)", zh: "完成后保留（分钟）" },
+  "set.keepDays": { en: "Keep idle sessions for", zh: "空闲会话保留" },
+  "set.daysUnit": { en: "days", zh: "天" },
   "set.resident": { en: "Desktop-resident", zh: "桌面常驻" },
   "set.autostart": { en: "Start on login", zh: "开机自启" },
   "set.dockLeft": { en: "Dock to left edge", zh: "停靠屏幕左侧" },
