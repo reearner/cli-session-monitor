@@ -460,6 +460,18 @@ body.ball #app {
 .pill:hover {
   filter: brightness(1.12);
 }
+/* Dock/undock fades the pill out, then back in once the window IS the new shape
+   (strip / ball). The fade-in covers the one repaint frame between the orb being
+   hidden and the resized window painting — the "empty-window blink" on drop. */
+.pill {
+  transition: opacity 0.12s ease;
+}
+.pill.fading {
+  /* hide instantly (no out-transition) so no half-ball is ever painted; the
+     fade only applies on the way back in, where the blink would otherwise be. */
+  opacity: 0;
+  transition: none;
+}
 .pill.s-run {
   border-color: var(--run);
 }
@@ -654,6 +666,9 @@ body.docked.flash-waiting .pill {
   #app,
   .card.alerted {
     animation: none !important;
+  }
+  .pill {
+    transition: none !important;
   }
   /* keep a static highlight so the latest card is still identifiable */
   .card.alerted {

@@ -220,12 +220,14 @@ async function dockToEdge(anchor?: PhysicalPosition): Promise<void> {
     docked = true;
     document.body.classList.add("docked");
     setEdgeClass(dockEdge);
-    // Hide the orb while the window shrinks to the strip: otherwise the round
+    // Fade the orb out while the window shrinks to the strip: otherwise the round
     // ball's previous frame is shown clipped into the thin window for a frame
-    // (a "half ball"). Reveal it as the bar once the window IS the strip.
-    pillEl.hidden = true;
+    // (a "half ball"). Fade it back in as the bar once the window IS the strip —
+    // the 0.12s opacity transition (CSS) hides the one empty-window repaint frame
+    // that a hard display toggle exposed (the "blink on drop").
+    pillEl.classList.add("fading");
     await programmaticMove(() => setWindowBounds(nx, ny, w, h));
-    pillEl.hidden = false;
+    pillEl.classList.remove("fading");
     void saveWindowPos(nx, ny); // persist so it reappears here next launch
   } catch (e) {
     console.error("dock failed", e);
