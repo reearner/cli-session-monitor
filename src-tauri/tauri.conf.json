@@ -47,7 +47,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_YOUR_TAURI_UPDATER_PUBLIC_KEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM5RTUxOTgzMDBFQjYyOTkKUldTWll1c0FneG5sT1M5NTFHcHhvNmZZd2hEdlR4SlFUTDRqSTN0TS9LTEpWTmRmVUxTUzJ6NGsK",
       "endpoints": [
         "https://github.com/reearner/cli-session-monitor/releases/latest/download/latest.json"
       ]
