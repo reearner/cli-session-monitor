@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-26
+
+### Added
+- **In-app auto-update** (Tauri v2 updater): the app checks for a new version on launch and offers a one-click "Install & restart" banner. Update packages are signed with an Ed25519 key and verified against the embedded public key before installing; the launch check fails safe (offline / not-configured simply shows nothing). Releases now sign the artifacts and emit `latest.json` automatically.
+
+### Changed
+- **Card redesign — identify the session at a glance.** Each card now leads with the **project name** (the cwd's last path segment) instead of "Claude/Codex"; the parent directory shows as a small ▸ line, and the CLI kind is demoted to a small tag in the footer. Duplicate fields were removed and the layout deduplicated, so it's immediately clear which session a card belongs to.
+
+### Fixed
+- Dropping the floating ball / docked bar no longer **blinks**: the dock-to-edge step exposed one empty-window repaint frame (hard `display` toggle of the orb). The orb now hides instantly via opacity and fades back in as the bar over 0.12s, covering that frame (respects `prefers-reduced-motion`).
+
 ## [0.1.3] - 2026-06-25
 
 ### Added
