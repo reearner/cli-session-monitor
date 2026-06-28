@@ -1048,10 +1048,11 @@ fn export_agent_script(state: State<AppState>) -> Result<String, String> {
 #   bash remote-agent.sh --install-claude  install Claude Code hooks here, then run
 #   bash remote-agent.sh --uninstall       remove the Claude hooks installed here, then exit
 #
-# Needs two small binaries on THIS host: csm-agent and session-reporter. Easiest —
-# download csm-remote-x86_64-linux.tar.gz from the GitHub release and extract it
-# next to this script (static, no Rust needed). Alternatives: set CSM_AGENT_BIN /
-# CSM_REPORTER_BIN, or run inside a repo checkout with cargo (it builds them).
+# Needs two small binaries on THIS host: csm-agent and session-reporter. On
+# x86_64 Linux this script AUTO-DOWNLOADS them from the GitHub release on first
+# run (needs curl or wget; static, no Rust). Alternatives: set CSM_AGENT_BIN /
+# CSM_REPORTER_BIN, drop the binaries next to this script, or run inside a repo
+# checkout with cargo (it builds them).
 #
 # Monitors BOTH CLIs and relays session status to your ntfy topic (the desktop app
 # subscribes to it). Codex is automatic (its rollout files); Claude Code needs its
@@ -1063,14 +1064,40 @@ export CSM_RELAY_TOPIC=@@TOPIC@@
 @@TOKEN@@
 MODE="${1:-run}"
 
-# Locate a binary: $3 override, PATH, ./name, or (in a repo w/ cargo) build it.
-# The cargo branch only succeeds if the build produced the binary (so a failed
-# build reports "not found" with guidance, instead of a bogus path later).
+# Prebuilt static binaries live in the GitHub release; auto-fetched on first run
+# (x86_64 Linux only — the prebuilt target is x86_64-musl). Override the repo with
+# CSM_RELEASE_REPO if you forked.
+RELEASE_REPO="${CSM_RELEASE_REPO:-reearner/cli-session-monitor}"
+RELEASE_TARBALL="csm-remote-x86_64-linux.tar.gz"
+_fetched=0
+fetch_release() {
+  [ "$_fetched" = 1 ] && return 1            # only try once per run
+  _fetched=1
+  [ "$(uname -m)" = "x86_64" ] || return 1   # prebuilt is x86_64 only
+  local url="https://github.com/$RELEASE_REPO/releases/latest/download/$RELEASE_TARBALL"
+  echo "Fetching prebuilt agent: $url" >&2
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$RELEASE_TARBALL" || return 1
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$RELEASE_TARBALL" "$url" || return 1
+  else
+    return 1                                  # no downloader available
+  fi
+  tar -xzf "$RELEASE_TARBALL" || return 1
+  chmod +x ./csm-agent ./session-reporter 2>/dev/null || true
+  return 0
+}
+
+# Locate a binary: $3 override, PATH, ./name, auto-downloaded release, or (in a
+# repo w/ cargo) build it. The cargo branch only succeeds if the build produced
+# the binary (so a failed build reports "not found" with guidance, not a bogus
+# path later).
 locate() {
   local bin="$3"
   if [ -z "$bin" ]; then
     if command -v "$1" >/dev/null 2>&1; then bin="$(command -v "$1")";
     elif [ -x "./$1" ]; then bin="./$1";
+    elif fetch_release && [ -x "./$1" ]; then bin="./$1";
     elif command -v cargo >/dev/null 2>&1 && [ -f Cargo.toml ]; then
       if cargo build --release -p "$2" >&2 && [ -x "./target/release/$1" ]; then
         bin="./target/release/$1";
@@ -1083,10 +1110,9 @@ locate() {
 if [ "$MODE" = "--install-claude" ] || [ "$MODE" = "--uninstall" ]; then
   REPORTER="$(locate session-reporter csm-reporter "${CSM_REPORTER_BIN:-}")"
   if [ -z "$REPORTER" ]; then
-    echo "session-reporter not found." >&2
-    echo "Easiest: download csm-remote-x86_64-linux.tar.gz from the release and extract it" >&2
-    echo "here (gives ./session-reporter + ./csm-agent). Or: set CSM_REPORTER_BIN=/path, or" >&2
-    echo "run inside a repo checkout with Rust/cargo installed." >&2
+    echo "session-reporter not found (auto-download needs curl/wget on x86_64 Linux)." >&2
+    echo "Manually: grab csm-remote-x86_64-linux.tar.gz from the release and extract here," >&2
+    echo "or set CSM_REPORTER_BIN=/path, or run in a repo checkout with Rust/cargo." >&2
     exit 1
   fi
 fi
@@ -1104,10 +1130,9 @@ esac
 
 AGENT="$(locate csm-agent csm-agent "${CSM_AGENT_BIN:-}")"
 if [ -z "$AGENT" ]; then
-  echo "csm-agent not found." >&2
-  echo "Easiest: download csm-remote-x86_64-linux.tar.gz from the release and extract it" >&2
-  echo "here (gives ./csm-agent). Or: set CSM_AGENT_BIN=/path, or run inside a repo" >&2
-  echo "checkout with Rust/cargo installed." >&2
+  echo "csm-agent not found (auto-download needs curl/wget on x86_64 Linux)." >&2
+  echo "Manually: grab csm-remote-x86_64-linux.tar.gz from the release and extract here," >&2
+  echo "or set CSM_AGENT_BIN=/path, or run in a repo checkout with Rust/cargo." >&2
   exit 1
 fi
 echo "csm-agent -> $CSM_RELAY_URL/$CSM_RELAY_TOPIC"
