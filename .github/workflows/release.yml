@@ -30,6 +30,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: CLI Session Monitor ${{ github.ref_name }}
+          releaseBody: "See [CHANGELOG.md](https://github.com/reearner/cli-session-monitor/blob/main/CHANGELOG.md) for the full list of changes.\n\n**Windows:** download the `*-setup.exe` (or `.msi`) below.\n**Remote monitoring (Linux):** the exported `remote-agent.sh` auto-downloads `csm-remote-x86_64-linux.tar.gz` on first run (curl/wget on x86_64 Linux).\n\nInstallers are signed for in-app auto-update; `SHA256SUMS.txt` lists checksums."
           releaseDraft: true
           prerelease: false
 
