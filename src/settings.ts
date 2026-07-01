@@ -104,6 +104,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
       panel_h: 640,
       onboarded: true,
       discover_window_days: 1,
+      session_names: {},
     };
   }
 

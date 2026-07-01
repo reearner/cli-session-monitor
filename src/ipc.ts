@@ -54,6 +54,11 @@ export const relayStatus = (): Promise<{ subscribed: boolean; connected: boolean
 /** Fire a test desktop notification so the user can verify notifications work. */
 export const testNotification = (): Promise<void> => invoke("test_notification");
 
+/** Set (or clear, when `name` is blank) a session's user-assigned card name,
+ *  keyed by session id so it persists across restarts and `--resume`. */
+export const setSessionName = (id: string, name: string): Promise<void> =>
+  invoke("set_session_name", { id, name });
+
 /** Persist the widget position (physical px) for next launch. */
 export const saveWindowPos = (x: number, y: number): Promise<void> =>
   invoke("save_window_pos", { x, y });

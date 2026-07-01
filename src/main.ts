@@ -16,6 +16,7 @@ import {
   sessionWindowTitles,
   dismissSession,
   activeWindowCards,
+  setSessionName,
 } from "./ipc";
 import { createCard } from "./session-card";
 import { formatDuration } from "./timer";
@@ -63,6 +64,9 @@ document.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }
 });
 
 let sessions: SessionView[] = [];
+// User-assigned card names, keyed by session id (persisted in config). Applied
+// as the card headline so several sessions are easy to tell apart.
+let names: Record<string, string> = {};
 let myHost = ""; // local hostname; local cards are clickable -> jump to editor
 let lite = false; // persistent preference (lightweight mode)
 let expanded = false; // runtime: in lite mode, temporarily expanded
@@ -393,12 +397,64 @@ function setAlert(key: SessionKey): void {
   render();
 }
 
+// Inline-edit the card headline. Enter/blur commits, Escape cancels. Blank name
+// clears the custom name (reverts to the project folder name). Persisted by
+// session id so it sticks across restarts and --resume.
+function startRename(v: SessionView, card: HTMLElement): void {
+  const nameEl = card.querySelector<HTMLElement>(".project");
+  if (!nameEl) return;
+  const id = v.key.session_id;
+  const input = document.createElement("input");
+  input.className = "rename-input";
+  input.value = names[id] ?? "";
+  input.placeholder = nameEl.textContent ?? "";
+  input.spellcheck = false;
+  input.maxLength = 40;
+  // Don't let clicks/keys inside the input reach the card (jump / space-scroll).
+  const swallow = (e: Event) => e.stopPropagation();
+  input.addEventListener("click", swallow);
+  input.addEventListener("mousedown", swallow);
+  input.addEventListener("keydown", swallow);
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const commit = (save: boolean) => {
+    if (done) return;
+    done = true;
+    if (save) {
+      const val = input.value.trim();
+      if (val) names[id] = val;
+      else delete names[id];
+      void setSessionName(id, val).catch(() => {});
+    }
+    render();
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      commit(false);
+    }
+  });
+  input.addEventListener("blur", () => commit(true));
+}
+
 function render(): void {
   // full card list
   sessionsEl.replaceChildren();
   for (const v of sessions) {
-    const card = createCard(v, myHost);
+    const card = createCard(v, myHost, names[v.key.session_id] ?? "");
     if (alertKey && keyId(v.key) === alertKey) card.classList.add("alerted");
+    // Rename: replace the headline with an inline input; commit persists the name
+    // by session id (survives restarts / --resume) and re-renders.
+    card.querySelector<HTMLButtonElement>(".card-rename")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startRename(v, card);
+    });
     // Close button: hide this card (reappears on fresh activity). Stop the click
     // from bubbling to the card's jump-to-editor handler.
     card.querySelector<HTMLButtonElement>(".card-close")?.addEventListener(
@@ -601,6 +657,9 @@ function tickTimers(): void {
   });
 }
 
+// Flash window per kind. "waiting" (the CLI is asking you something) lingers
+// noticeably longer than a plain "replied" so a question is harder to miss.
+const FLASH_MS = { done: 2400, waiting: 6000 } as const;
 let flashTimer: number | undefined;
 function flash(kind: "done" | "waiting"): void {
   const b = document.body;
@@ -611,7 +670,7 @@ function flash(kind: "done" | "waiting"): void {
   if (flashTimer) window.clearTimeout(flashTimer);
   flashTimer = window.setTimeout(
     () => b.classList.remove("flash-done", "flash-waiting"),
-    2400,
+    FLASH_MS[kind],
   );
 }
 
@@ -712,6 +771,7 @@ async function init(): Promise<void> {
     lite = cfg.lightweight;
     savedX = cfg.win_x;
     savedY = cfg.win_y;
+    names = cfg.session_names ?? {};
     setLang(cfg.language);
     FULL = new LogicalSize(
       Math.max(MIN_PANEL_W, cfg.panel_w),
@@ -784,7 +844,9 @@ async function init(): Promise<void> {
       if (collapsed()) {
         if (docked) await undock();
         if (idleTimer) window.clearTimeout(idleTimer);
-        idleTimer = window.setTimeout(() => void dockToEdge(), 2600);
+        // Keep the orb out for the whole flash (waiting lingers longer) plus a
+        // small tail, so it never re-docks mid-flash.
+        idleTimer = window.setTimeout(() => void dockToEdge(), FLASH_MS[kind] + 200);
       }
       flash(kind);
     });

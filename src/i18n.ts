@@ -36,6 +36,10 @@ const STR: Record<string, Entry> = {
     en: "Copy the resume command — paste it into the terminal you want this session in",
     zh: "复制恢复命令——粘到你想让该会话进入的终端",
   },
+  "card.rename": {
+    en: "Rename this card (kept for this session, even after resuming it)",
+    zh: "重命名此卡片（按会话保留，恢复该会话后仍显示）",
+  },
   "card.launchDir": { en: "Launch dir: {dir}", zh: "启动目录：{dir}" },
   "card.estimate": { en: "est.", zh: "估算" },
   "card.clickRemote": {

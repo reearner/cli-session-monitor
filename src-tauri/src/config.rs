@@ -3,6 +3,7 @@
 //! A missing or corrupt file always degrades to defaults rather than failing —
 //! the app must start regardless of config state.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -77,6 +78,12 @@ pub struct Config {
     /// cards, so recurring sessions stay around. Min 1.
     #[serde(default = "default_discover_days")]
     pub discover_window_days: u32,
+
+    /// User-assigned card names, keyed by session id, so a renamed card keeps its
+    /// name across restarts and `--resume`. The user types these — they are NOT
+    /// read from conversation content (preserving the metadata-only promise).
+    #[serde(default)]
+    pub session_names: HashMap<String, String>,
 }
 
 fn default_discover_days() -> u32 {
@@ -129,6 +136,7 @@ impl Default for Config {
             panel_h: default_panel_h(),
             onboarded: false,
             discover_window_days: default_discover_days(),
+            session_names: HashMap::new(),
         }
     }
 }
@@ -197,6 +205,7 @@ mod tests {
             panel_h: 700,
             onboarded: true,
             discover_window_days: 7,
+            session_names: HashMap::from([("sid-123".to_string(), "My agent".to_string())]),
         };
         cfg.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), cfg);

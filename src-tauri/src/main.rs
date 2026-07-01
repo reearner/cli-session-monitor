@@ -147,6 +147,21 @@ fn save_window_pos(state: State<AppState>, x: i32, y: i32) {
     let _ = cfg.save_to(Config::default_path());
 }
 
+/// Set (or clear, when `name` is blank) a user-assigned display name for a
+/// session, keyed by its session id so it survives restarts and `--resume`.
+/// Lightweight persist, like `save_window_pos`.
+#[tauri::command]
+fn set_session_name(state: State<AppState>, id: String, name: String) {
+    let mut cfg = state.config.lock().unwrap();
+    let name = name.trim();
+    if name.is_empty() {
+        cfg.session_names.remove(&id);
+    } else {
+        cfg.session_names.insert(id, name.to_string());
+    }
+    let _ = cfg.save_to(Config::default_path());
+}
+
 /// Persist the user-chosen full-panel size (logical px) so a resized panel is
 /// remembered next launch. Lightweight, like `save_window_pos`.
 #[tauri::command]
@@ -649,8 +664,16 @@ fn best_editor_window(
     if scored.is_empty() {
         return None;
     }
-    let mut pool: Vec<&(usize, usize, bool)> = if is_remote && scored.iter().any(|s| s.2) {
-        scored.iter().filter(|s| s.2).collect()
+    let mut pool: Vec<&(usize, usize, bool)> = if is_remote {
+        // A remote session may ONLY match a window that carries its own host name
+        // (a VS Code/Cursor Remote-SSH window). Never fall back to a same-named
+        // LOCAL window — that's the "jumps to the wrong window" bug for a session
+        // running on another machine (e.g. Codex inside a VM, no local window).
+        let host_pool: Vec<&(usize, usize, bool)> = scored.iter().filter(|s| s.2).collect();
+        if host_pool.is_empty() {
+            return None;
+        }
+        host_pool
     } else {
         scored.iter().collect()
     };
@@ -1625,6 +1648,7 @@ fn main() {
             test_notification,
             save_window_pos,
             save_window_size,
+            set_session_name,
             set_resizable,
             set_window_bounds,
             local_host,
@@ -1712,6 +1736,19 @@ mod tests {
         assert_eq!(
             best_editor_window("/srv/我的项目", "build-server", &wins, None),
             Some(0)
+        );
+    }
+
+    #[test]
+    fn remote_session_does_not_jump_to_a_same_named_local_window() {
+        // A session on another host (e.g. Codex inside a VM) whose folder tail
+        // happens to match a LOCAL window's folder must NOT focus that local
+        // window — there is no Remote-SSH window for its host, so the answer is
+        // "no match", not the wrong window.
+        let wins = vec![(h(1), "D:\\work\\desktop - Cursor".to_string())];
+        assert_eq!(
+            best_editor_window("/home/tsf/desktop", "tsf-virtual-machine", &wins, None),
+            None
         );
     }
 

@@ -29,7 +29,7 @@ function statusText(s: Status): string {
  * Build a session card. Running cards carry `data-start` on the `.timer` so the
  * 1s tick in main.ts can update the elapsed time without a full re-render.
  */
-export function createCard(v: SessionView, localHost = ""): HTMLElement {
+export function createCard(v: SessionView, localHost = "", customName = ""): HTMLElement {
   const card = el("div", `card status-${v.status} src-${v.source}`);
   card.dataset.key = keyId(v.key);
 
@@ -37,14 +37,16 @@ export function createCard(v: SessionView, localHost = ""): HTMLElement {
   // ("disc:..."), which isn't a resumable session id.
   const real = !v.key.session_id.startsWith("disc:");
 
-  // Headline = the PROJECT name (the dir's last segment) — that's what identifies
-  // the session. The parent dir (below) and the full path (hover) tell same-named
-  // projects apart, without repeating the name. The CLI kind moves to the footer.
+  // Headline = a user-assigned name if set (persisted by session id, so it sticks
+  // across restarts / --resume), else the PROJECT name (the dir's last segment).
+  // The parent dir (below) and the full path (hover) tell same-named projects
+  // apart. The CLI kind moves to the footer.
   const project = v.cwd.split(/[\\/]/).filter(Boolean).pop() || v.cwd || "—";
   const parent = v.cwd.replace(/[\\/][^\\/]+[\\/]*$/, "");
 
   const head = el("div", "card-head");
-  const name = el("span", "project", project);
+  const label = customName.trim() || project;
+  const name = el("span", customName.trim() ? "project named" : "project", label);
   name.title = v.cwd;
   head.append(el("span", "dot"), name);
   // Short session id — tells apart two cards that share a directory (e.g. several
@@ -53,6 +55,13 @@ export function createCard(v: SessionView, localHost = ""): HTMLElement {
     const sid = el("span", "sid", "#" + v.key.session_id.slice(-6));
     sid.title = v.key.session_id;
     head.append(sid);
+  }
+  // Rename (wired in main.ts): give this card a custom name that persists by
+  // session id — so you can tell several sessions apart at a glance.
+  if (real) {
+    const rename = el("button", "card-rename", "✎");
+    rename.title = t("card.rename");
+    head.append(rename);
   }
   // Copy the resume command (wired in main.ts) so you can paste it into the exact
   // terminal you want — handy when several agents share one window/dir.

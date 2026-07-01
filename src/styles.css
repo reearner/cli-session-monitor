@@ -176,9 +176,53 @@ body {
   font: 600 10px/1 ui-monospace, "Cascadia Code", Consolas, monospace;
   opacity: 0.7;
 }
+/* Rename (✎) button — leads the right-hand button group; carries the auto margin
+   that pushes rename + resume + close together to the right. Subtle until hover. */
+.card-rename {
+  margin-left: auto;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  line-height: 1;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s;
+}
+.card:hover .card-rename {
+  opacity: 0.65;
+}
+.card-rename:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+/* Inline rename editor — replaces the headline while editing. */
+.rename-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 60%;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: 600 13px/1.2 inherit;
+  -webkit-app-region: no-drag;
+}
+.rename-input:focus {
+  outline: none;
+}
 /* Copy-resume (⧉) button — right group with close, subtle until hover. */
 .card-resume {
-  margin-left: auto;
   flex: none;
   width: 18px;
   height: 18px;
@@ -513,6 +557,25 @@ body.docked .pill {
      by which coloured counts are present, not by the bar background) */
   background: var(--panel);
 }
+/* When the docked bar carries a status that wants your attention, the WHOLE
+   strip lightens toward the status colour (not just the counts) — so the thin
+   bar itself is noticeable, complementing the pop-out ball. A translucent colour
+   layered over the opaque panel keeps it opaque (the window is transparent). */
+body.docked .pill.s-wait {
+  background:
+    linear-gradient(rgba(245, 158, 11, 0.36), rgba(245, 158, 11, 0.36)),
+    var(--panel);
+}
+body.docked .pill.s-done {
+  background:
+    linear-gradient(rgba(34, 197, 94, 0.32), rgba(34, 197, 94, 0.32)),
+    var(--panel);
+}
+body.docked .pill.s-run {
+  background:
+    linear-gradient(rgba(59, 130, 246, 0.28), rgba(59, 130, 246, 0.28)),
+    var(--panel);
+}
 .pill-text {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -623,8 +686,10 @@ body:not(.ball).flash-waiting #app {
 body.ball:not(.docked).flash-done .pill {
   animation: ball-done-kf 0.7s ease-in-out 2;
 }
+/* waiting (the CLI is asking you something): pulse for the whole flash window
+   (duration is controlled by the JS flash timer, which is longer for waiting) */
 body.ball:not(.docked).flash-waiting .pill {
-  animation: ball-wait-kf 0.7s ease-in-out 2;
+  animation: ball-wait-kf 0.7s ease-in-out infinite;
 }
 
 /* docked bar: flash the whole bar's color (a glow on a 6px strip is too subtle) */
@@ -654,7 +719,7 @@ body.docked.flash-done .pill {
   animation: bar-done-kf 0.6s ease-in-out 4;
 }
 body.docked.flash-waiting .pill {
-  animation: bar-wait-kf 0.6s ease-in-out 4;
+  animation: bar-wait-kf 0.6s ease-in-out infinite;
 }
 
 /* Accessibility: respect a reduced-motion preference — drop the pulsing/flashing

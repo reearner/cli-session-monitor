@@ -43,6 +43,7 @@ export interface Config {
   panel_h: number;
   onboarded: boolean;
   discover_window_days: number;
+  session_names: Record<string, string>;
 }
 
 export interface InstallOutcome {
