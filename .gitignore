@@ -33,3 +33,6 @@ Thumbs.db
 # project; the real docs live in docs/). Ignore the whole dir.
 audit.log
 .spec-workflow/
+
+# Playwright MCP scratch dir (browser profiles/artifacts) — not part of the project.
+.playwright-mcp/

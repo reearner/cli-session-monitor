@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-06-28
+
+### Added
+- **Rename a card.** Each session card has a ✎ button to give it a custom name; the name is stored by session id, so it persists across restarts and when you resume the same conversation (`claude --resume <id>` / `codex resume <id>`) — making several sessions easy to tell apart. You type the name; no conversation content is read (the metadata-only promise holds).
+
+### Changed
+- **Stable card order.** Cards no longer reshuffle when you reopen the panel. They were sorted by most-recent activity, so any event (e.g. a Claude tool call) jumped a card to the top of its group; now each card keeps a fixed slot within its status and only moves when its status actually changes.
+- **The docked bar lightens by status.** When collapsed to the thin edge bar, the whole strip now tints to the most-urgent status color (amber = needs you, green = replied, blue = running), so it's noticeable at a glance — complementing the pop-out ball.
+- The **"needs your input" flash lasts longer** (~6s, continuously pulsing) than a plain "replied" flash, so a question is harder to miss.
+
+### Fixed
+- **Remote sessions no longer jump to the wrong window.** A session on another host (e.g. Codex inside a VM) whose folder name coincided with a local editor window could focus that unrelated local window; it now only matches a Remote-SSH window for its own host, otherwise it doesn't jump.
+- The generated **remote-agent.sh auto-downloads** the prebuilt agent binary on first run (x86_64 Linux, via curl/wget) — no manual download needed.
+
 ## [0.1.4] - 2026-06-26
 
 ### Added
