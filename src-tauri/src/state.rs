@@ -65,6 +65,10 @@ struct SessionState {
     last_duration_ms: Option<i64>,
     timing_reliable: bool,
     last_event_at: i64,
+    /// Event `ts` when this session was first seen. Stable — never updated — so
+    /// snapshot ordering within a status group doesn't reshuffle as new events
+    /// arrive; a card keeps its slot until its STATUS changes.
+    first_seen: i64,
     /// True for placeholder cards synthesized from on-disk session files (not a
     /// live event). Used to de-dupe per directory and to let real events replace.
     discovered: bool,
@@ -89,6 +93,7 @@ impl SessionState {
             last_duration_ms: None,
             timing_reliable: true,
             last_event_at: ev.ts,
+            first_seen: ev.ts,
             discovered: false,
             done_since: None,
         }
@@ -330,19 +335,27 @@ impl StateMachine {
         changed
     }
 
-    /// Current sessions, ordered: `Running` first, then most-recently-active.
+    /// Current sessions, ordered by status (`Waiting` > `Running` > `Done` >
+    /// `Idle`), then STABLY within each status. The order is deliberately NOT
+    /// recency-based: sorting by `last_event_at` made same-status cards jump
+    /// around every time a session emitted an event (e.g. a Claude tool call), so
+    /// reopening the panel showed a reshuffled list. Now a card keeps a fixed slot
+    /// (by first-seen, then id) and only moves when its STATUS changes.
     pub fn snapshot(&self) -> Vec<SessionView> {
         let mut entries: Vec<(&SessionKey, &SessionState)> = self
             .sessions
             .iter()
             .filter(|(k, _)| !self.dismissed.contains(k))
             .collect();
-        entries.sort_by(|(_, a), (_, b)| {
+        entries.sort_by(|(ka, a), (kb, b)| {
             status_rank(a.status)
                 .cmp(&status_rank(b.status))
                 // real sessions before discovered placeholders of the same status
                 .then(a.discovered.cmp(&b.discovered))
-                .then(b.last_event_at.cmp(&a.last_event_at))
+                // stable within a status: oldest-seen first (new sessions append),
+                // id as a final deterministic tiebreak
+                .then(a.first_seen.cmp(&b.first_seen))
+                .then(ka.session_id.cmp(&kb.session_id))
         });
         entries
             .into_iter()
@@ -660,6 +673,23 @@ mod tests {
         ));
         sm.apply(ev(Source::Codex, "s", "host", EventKind::RunEnd, 1000));
         assert_eq!(sm.len(), 3, "same id on different host/source => distinct");
+    }
+
+    #[test]
+    fn snapshot_order_is_stable_within_a_status() {
+        let mut sm = StateMachine::new(120);
+        // Two running sessions; "a" seen before "b".
+        sm.apply(cc("a", EventKind::RunStart, 10));
+        sm.apply(cc("b", EventKind::RunStart, 20));
+        let before: Vec<String> =
+            sm.snapshot().iter().map(|v| v.key.session_id.clone()).collect();
+        // "a" emits a newer event — recency ordering would have jumped it to the
+        // front; first-seen ordering must keep the slots put.
+        sm.apply(cc("a", EventKind::RunStart, 1000));
+        let after: Vec<String> =
+            sm.snapshot().iter().map(|v| v.key.session_id.clone()).collect();
+        assert_eq!(before, after, "same-status cards keep their slot on new events");
+        assert_eq!(after, vec!["a".to_string(), "b".to_string()]);
     }
 
     #[test]
