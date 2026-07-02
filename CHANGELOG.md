@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-07-01
+
+### Added
+- **Per-card resume command.** Right-click a card's ⧉ button to edit and remember the exact command to relaunch that session — so flags like `--yolo` / `--dangerously-skip-permissions` that the default command drops are preserved. Stored by session id, persists across restarts. A card with a custom command marks its ⧉ in the accent color.
+- **Grey/idle cards are copyable too.** Discovered cards (folder only, no session id) now have the ⧉ button; it copies a "continue the most recent session in this folder" command (`claude --continue` / `codex resume --last`).
+- **Completion notifications name the session.** The toast title now leads with the card's name (your custom rename if set, else the project folder) — e.g. `academic_paper · Claude Code finished` — so you can tell which session pinged you, not just its path.
+- **Config is backed up before meaningful saves.** Settings/name/command changes first archive the previous `config.json` to `~/.cli-session-monitor/backups/` (newest 10 kept), so a bad write can't silently lose your data.
+
+### Changed
+- **Longer default retention:** a finished (green) card now stays **1 hour** before dimming to idle (was 2 min), and idle cards are kept **3 days** (was 1). Both still adjustable in Settings.
+
+### Fixed
+- **Card names & remembered commands are no longer wiped by saving a setting.** `set_config` replaced the whole config with the settings panel's (stale) snapshot, blanking `session_names`/`session_cmds`; these fields (and window position/size) are now owned by the backend and preserved.
+- **Editing a name/command is no longer interrupted by a flicker.** A background snapshot push could rebuild the card list and destroy the open input mid-typing; re-renders now pause while an inline editor is open.
+- **No more random flicker ("screen twitch").** The panel rebuilt the whole card list on every backend push — including changes to fields it doesn't display (e.g. a running session's per-tool-call events) — flashing the transparent window. It now re-renders only when the visible content actually changes.
+
 ## [0.1.5] - 2026-06-28
 
 ### Added
