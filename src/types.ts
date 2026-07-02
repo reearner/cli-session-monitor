@@ -44,6 +44,7 @@ export interface Config {
   onboarded: boolean;
   discover_window_days: number;
   session_names: Record<string, string>;
+  session_cmds: Record<string, string>;
 }
 
 export interface InstallOutcome {

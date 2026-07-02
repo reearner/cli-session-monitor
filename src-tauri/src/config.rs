@@ -84,10 +84,17 @@ pub struct Config {
     /// read from conversation content (preserving the metadata-only promise).
     #[serde(default)]
     pub session_names: HashMap<String, String>,
+
+    /// User-edited resume commands, keyed by session id. Lets a card remember the
+    /// exact command to relaunch it (e.g. with `--yolo` /
+    /// `--dangerously-skip-permissions`), which the copy button would otherwise
+    /// drop. Empty/absent = use the auto-generated default.
+    #[serde(default)]
+    pub session_cmds: HashMap<String, String>,
 }
 
 fn default_discover_days() -> u32 {
-    1
+    3
 }
 
 fn default_panel_w() -> u32 {
@@ -111,7 +118,7 @@ fn default_true() -> bool {
 }
 
 fn default_idle_secs() -> u32 {
-    120
+    3600
 }
 
 impl Default for Config {
@@ -119,7 +126,7 @@ impl Default for Config {
         Self {
             notifications: true,
             sound: true,
-            idle_threshold_secs: 120,
+            idle_threshold_secs: default_idle_secs(),
             always_on_top: true,
             autostart: false,
             dock_left: false,
@@ -137,7 +144,33 @@ impl Default for Config {
             onboarded: false,
             discover_window_days: default_discover_days(),
             session_names: HashMap::new(),
+            session_cmds: HashMap::new(),
         }
+    }
+}
+
+/// Keep only the newest `keep` `config-*.json` files in `dir` (backups are named
+/// `config-<epoch_millis>.json`, so lexical order == chronological order).
+fn prune_backups(dir: &Path, keep: usize) {
+    let mut backups: Vec<PathBuf> = match std::fs::read_dir(dir) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.starts_with("config-") && n.ends_with(".json"))
+                    .unwrap_or(false)
+            })
+            .collect(),
+        Err(_) => return,
+    };
+    if backups.len() <= keep {
+        return;
+    }
+    backups.sort();
+    let excess = backups.len() - keep;
+    for old in backups.into_iter().take(excess) {
+        let _ = std::fs::remove_file(old);
     }
 }
 
@@ -162,6 +195,29 @@ impl Config {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         std::fs::write(path, json)
+    }
+
+    /// Like [`save_to`], but first archives the CURRENT on-disk config (if any) to
+    /// a timestamped file under `backups/`, keeping the newest few. Use this for
+    /// MEANINGFUL edits (settings, session names, remembered commands) so a bad
+    /// write can never silently lose the old data. Positional saves
+    /// (`save_window_pos/size`) intentionally use plain `save_to` to avoid churn.
+    pub fn save_with_backup(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
+        let path = path.as_ref();
+        if path.exists() {
+            if let Some(parent) = path.parent() {
+                let backups = parent.join("backups");
+                if std::fs::create_dir_all(&backups).is_ok() {
+                    let stamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis())
+                        .unwrap_or(0);
+                    let _ = std::fs::copy(path, backups.join(format!("config-{stamp}.json")));
+                    prune_backups(&backups, 10);
+                }
+            }
+        }
+        self.save_to(path)
     }
 
     /// `~/.cli-session-monitor/config.json` (via shared `csm_core::paths`).
@@ -206,6 +262,10 @@ mod tests {
             onboarded: true,
             discover_window_days: 7,
             session_names: HashMap::from([("sid-123".to_string(), "My agent".to_string())]),
+            session_cmds: HashMap::from([(
+                "sid-123".to_string(),
+                "codex resume --yolo sid-123".to_string(),
+            )]),
         };
         cfg.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), cfg);
@@ -227,8 +287,27 @@ mod tests {
         let cfg = Config::load_from(&path);
         assert!(!cfg.notifications);
         assert!(cfg.sound); // default
-        assert_eq!(cfg.idle_threshold_secs, 120); // default
+        assert_eq!(cfg.idle_threshold_secs, 3600); // default (1 hour)
         assert!(cfg.always_on_top); // default
+    }
+
+    #[test]
+    fn save_with_backup_archives_previous_and_prunes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        // First write (no prior file → no backup yet).
+        Config::default().save_with_backup(&path).unwrap();
+        assert!(path.exists());
+        let backups = dir.path().join("backups");
+        // Many subsequent saves should archive the previous file and cap the count.
+        for i in 0..15 {
+            let mut cfg = Config::default();
+            cfg.panel_w = 300 + i; // change content each time
+            cfg.save_with_backup(&path).unwrap();
+        }
+        let count = std::fs::read_dir(&backups).unwrap().count();
+        assert!(count > 0, "a previous config should have been archived");
+        assert!(count <= 10, "backups are pruned to the newest 10, got {count}");
     }
 
     #[test]

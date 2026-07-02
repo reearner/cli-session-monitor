@@ -33,8 +33,12 @@ const STR: Record<string, Entry> = {
     zh: "关闭此卡片（会话再次活动时会重新出现）",
   },
   "card.copyResume": {
-    en: "Copy the resume command — paste it into the terminal you want this session in",
-    zh: "复制恢复命令——粘到你想让该会话进入的终端",
+    en: "Click: copy the resume command · Right-click: edit & remember it (e.g. add --yolo)",
+    zh: "左键：复制恢复命令 · 右键：编辑并记住（如加 --yolo）",
+  },
+  "card.copyResumeDir": {
+    en: "Click: copy a command to resume the most recent session in this folder · Right-click: edit & remember it",
+    zh: "左键：复制命令（恢复该文件夹最近一次会话）· 右键：编辑并记住",
   },
   "card.rename": {
     en: "Rename this card (kept for this session, even after resuming it)",

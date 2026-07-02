@@ -59,6 +59,11 @@ export const testNotification = (): Promise<void> => invoke("test_notification")
 export const setSessionName = (id: string, name: string): Promise<void> =>
   invoke("set_session_name", { id, name });
 
+/** Set (or clear, when blank) the resume command a card remembers, keyed by
+ *  session id — preserves flags like --yolo across restarts. */
+export const setSessionCmd = (id: string, cmd: string): Promise<void> =>
+  invoke("set_session_cmd", { id, cmd });
+
 /** Persist the widget position (physical px) for next launch. */
 export const saveWindowPos = (x: number, y: number): Promise<void> =>
   invoke("save_window_pos", { x, y });

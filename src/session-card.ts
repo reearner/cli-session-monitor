@@ -63,13 +63,12 @@ export function createCard(v: SessionView, localHost = "", customName = ""): HTM
     rename.title = t("card.rename");
     head.append(rename);
   }
-  // Copy the resume command (wired in main.ts) so you can paste it into the exact
-  // terminal you want — handy when several agents share one window/dir.
-  if (real) {
-    const resume = el("button", "card-resume", "⧉");
-    resume.title = t("card.copyResume");
-    head.append(resume);
-  }
+  // Copy the resume command (wired in main.ts) so you can paste it into a terminal.
+  // Real sessions copy an exact `--resume <id>`; grey/discovered cards (dir only,
+  // no id) copy a "continue the most recent session in this folder" command.
+  const resume = el("button", "card-resume", "⧉");
+  resume.title = real ? t("card.copyResume") : t("card.copyResumeDir");
+  head.append(resume);
   // Close button — hides this card (wired in main.ts). Stops propagation there
   // so it doesn't also trigger the card's jump-to-editor click.
   const close = el("button", "card-close", "×");

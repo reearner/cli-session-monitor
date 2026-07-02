@@ -115,10 +115,22 @@ fn get_config(state: State<AppState>) -> Config {
 }
 
 #[tauri::command]
-fn set_config(app: AppHandle, state: State<AppState>, config: Config) -> Config {
+fn set_config(app: AppHandle, state: State<AppState>, mut config: Config) -> Config {
     let old = state.config.lock().unwrap().clone();
-    // persist (best-effort)
-    let _ = config.save_to(Config::default_path());
+    // These fields are owned by the backend / other commands, NOT the settings
+    // panel: session names & remembered resume commands (edited on the cards via
+    // set_session_name/set_session_cmd) and the window position/size (save_window_*).
+    // The panel sends a snapshot taken when it opened, which can be stale (e.g. a
+    // card was renamed afterwards) — so never let it clobber these. Keep the
+    // backend's current values instead.
+    config.session_names = old.session_names.clone();
+    config.session_cmds = old.session_cmds.clone();
+    config.win_x = old.win_x;
+    config.win_y = old.win_y;
+    config.panel_w = old.panel_w;
+    config.panel_h = old.panel_h;
+    // persist (best-effort), archiving the previous config first
+    let _ = config.save_with_backup(Config::default_path());
     state
         .sm
         .lock()
@@ -159,7 +171,22 @@ fn set_session_name(state: State<AppState>, id: String, name: String) {
     } else {
         cfg.session_names.insert(id, name.to_string());
     }
-    let _ = cfg.save_to(Config::default_path());
+    let _ = cfg.save_with_backup(Config::default_path());
+}
+
+/// Set (or clear, when blank) the resume command a card remembers, keyed by
+/// session id — so flags like `--yolo` / `--dangerously-skip-permissions` that
+/// the default command drops are preserved. Lightweight persist.
+#[tauri::command]
+fn set_session_cmd(state: State<AppState>, id: String, cmd: String) {
+    let mut cfg = state.config.lock().unwrap();
+    let cmd = cmd.trim();
+    if cmd.is_empty() {
+        cfg.session_cmds.remove(&id);
+    } else {
+        cfg.session_cmds.insert(id, cmd.to_string());
+    }
+    let _ = cfg.save_with_backup(Config::default_path());
 }
 
 /// Persist the user-chosen full-panel size (logical px) so a resized panel is
@@ -1649,6 +1676,7 @@ fn main() {
             save_window_pos,
             save_window_size,
             set_session_name,
+            set_session_cmd,
             set_resizable,
             set_window_bounds,
             local_host,

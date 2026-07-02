@@ -87,7 +87,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     cfg = {
       notifications: true,
       sound: true,
-      idle_threshold_secs: 120,
+      idle_threshold_secs: 3600,
       always_on_top: true,
       autostart: false,
       dock_left: false,
@@ -103,8 +103,9 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
       panel_w: 360,
       panel_h: 640,
       onboarded: true,
-      discover_window_days: 1,
+      discover_window_days: 3,
       session_names: {},
+      session_cmds: {},
     };
   }
 
@@ -153,7 +154,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     inputRow(
       t("set.keepMinutes"),
       String(Math.round(cfg.idle_threshold_secs / 60)),
-      "120",
+      "60",
       (v) => {
         const m = parseInt(v, 10);
         if (Number.isFinite(m) && m >= 0) {

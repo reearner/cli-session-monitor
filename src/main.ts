@@ -17,6 +17,7 @@ import {
   dismissSession,
   activeWindowCards,
   setSessionName,
+  setSessionCmd,
 } from "./ipc";
 import { createCard } from "./session-card";
 import { formatDuration } from "./timer";
@@ -67,6 +68,9 @@ let sessions: SessionView[] = [];
 // User-assigned card names, keyed by session id (persisted in config). Applied
 // as the card headline so several sessions are easy to tell apart.
 let names: Record<string, string> = {};
+// User-edited resume commands, keyed by session id (persisted). Overrides the
+// auto-generated command so flags like --yolo survive the copy button.
+let cmds: Record<string, string> = {};
 let myHost = ""; // local hostname; local cards are clickable -> jump to editor
 let lite = false; // persistent preference (lightweight mode)
 let expanded = false; // runtime: in lite mode, temporarily expanded
@@ -418,11 +422,13 @@ function startRename(v: SessionView, card: HTMLElement): void {
   nameEl.replaceWith(input);
   input.focus();
   input.select();
+  editing = true; // pause re-renders so a snapshot push can't wipe this input
 
   let done = false;
   const commit = (save: boolean) => {
     if (done) return;
     done = true;
+    editing = false;
     if (save) {
       const val = input.value.trim();
       if (val) names[id] = val;
@@ -443,7 +449,87 @@ function startRename(v: SessionView, card: HTMLElement): void {
   input.addEventListener("blur", () => commit(true));
 }
 
+// A cheap signature of everything the card list actually paints. The backend
+// pushes a snapshot whenever session STATE changes — but that includes changes to
+// fields the card doesn't show (e.g. last_event_at ticks on every Claude tool
+// call). Rebuilding the whole list for an identical-looking snapshot flashed the
+// (transparent) window. We render only when this signature changes.
+function sessionsSig(list: SessionView[]): string {
+  return list
+    .map(
+      (v) =>
+        `${keyId(v.key)}|${v.status}|${v.run_started_at ?? ""}|${v.last_duration_ms ?? ""}|${
+          v.timing_reliable ? 1 : 0
+        }|${v.cwd}|${names[v.key.session_id] ?? ""}`,
+    )
+    .join(";");
+}
+let lastRenderSig = "";
+// True while an inline editor (rename / resume-command) is open. A full re-render
+// tears down all cards (replaceChildren), destroying the open <input> mid-typing
+// — the "screen flickers and my edit is interrupted" bug. Skip renders while
+// editing; the commit re-renders once with the final state.
+let editing = false;
+
+// The auto-generated resume command for a card: real sessions resume by id;
+// grey/discovered cards (dir only, no id) continue the most recent session in
+// that folder. A remembered custom command (cmds[id]) overrides this.
+function defaultResumeCmd(v: SessionView): string {
+  const id = v.key.session_id;
+  const isReal = !id.startsWith("disc:");
+  if (isReal) return v.source === "codex" ? `codex resume ${id}` : `claude --resume ${id}`;
+  return v.source === "codex" ? "codex resume --last" : "claude --continue";
+}
+
+// Right-click the ⧉ button to edit the command this card remembers. Prefilled
+// with the current effective command; Enter saves (persisted by session id),
+// Escape cancels, blank reverts to the auto default.
+function startCmdEdit(v: SessionView, card: HTMLElement): void {
+  const id = v.key.session_id;
+  const def = defaultResumeCmd(v);
+  const input = document.createElement("input");
+  input.className = "cmd-input";
+  input.value = cmds[id] ?? def;
+  input.placeholder = def;
+  input.spellcheck = false;
+  const swallow = (e: Event) => e.stopPropagation();
+  input.addEventListener("click", swallow);
+  input.addEventListener("mousedown", swallow);
+  card.insertBefore(input, card.querySelector(".winline"));
+  input.focus();
+  input.select();
+  editing = true; // pause re-renders so a snapshot push can't wipe this input
+
+  let done = false;
+  const commit = (save: boolean) => {
+    if (done) return;
+    done = true;
+    editing = false;
+    if (save) {
+      const val = input.value.trim();
+      const keep = val && val !== def ? val : "";
+      if (keep) cmds[id] = keep;
+      else delete cmds[id];
+      void setSessionCmd(id, keep).catch(() => {});
+    }
+    input.remove();
+    render(); // reflect final state (and any snapshot missed while editing)
+  };
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      commit(false);
+    }
+  });
+  input.addEventListener("blur", () => commit(true));
+}
+
 function render(): void {
+  if (editing) return; // don't tear down an open inline editor mid-typing
   // full card list
   sessionsEl.replaceChildren();
   for (const v of sessions) {
@@ -464,25 +550,33 @@ function render(): void {
         void dismissSession(v.key);
       },
     );
-    // Copy the resume command for this exact session, so you can paste it into the
-    // terminal you want (the way to reach a specific agent when several share one
-    // editor window — Windows can't focus an individual terminal tab).
-    card.querySelector<HTMLButtonElement>(".card-resume")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const id = v.key.session_id;
-      const cmd = v.source === "codex" ? `codex resume ${id}` : `claude --resume ${id}`;
-      const btn = e.currentTarget as HTMLButtonElement;
-      void navigator.clipboard
-        .writeText(cmd)
-        .then(() => {
-          const orig = btn.textContent;
-          btn.textContent = "✓";
-          window.setTimeout(() => {
-            btn.textContent = orig;
-          }, 1000);
-        })
-        .catch(() => {});
-    });
+    // Copy the resume command. Left-click copies the effective command (a
+    // remembered custom one if set, else the auto default); right-click edits and
+    // remembers it — so flags like --yolo the default drops are preserved.
+    const resumeBtn = card.querySelector<HTMLButtonElement>(".card-resume");
+    if (resumeBtn) {
+      if (cmds[v.key.session_id]) resumeBtn.classList.add("has-cmd");
+      resumeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const cmd = cmds[v.key.session_id] ?? defaultResumeCmd(v);
+        const btn = e.currentTarget as HTMLButtonElement;
+        void navigator.clipboard
+          .writeText(cmd)
+          .then(() => {
+            const orig = btn.textContent;
+            btn.textContent = "✓";
+            window.setTimeout(() => {
+              btn.textContent = orig;
+            }, 1000);
+          })
+          .catch(() => {});
+      });
+      resumeBtn.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startCmdEdit(v, card);
+      });
+    }
     // Click to jump to the session's editor window. Works for local sessions and
     // for remote ones opened via VS Code/Cursor Remote-SSH (window runs locally).
     if (v.cwd) {
@@ -566,6 +660,7 @@ async function refreshWindowLines(): Promise<void> {
     }
   });
   applyActiveHighlight();
+  lastRenderSig = sessionsSig(sessions);
 }
 
 // Highlight the card(s) whose editor window is the current foreground window.
@@ -772,6 +867,7 @@ async function init(): Promise<void> {
     savedX = cfg.win_x;
     savedY = cfg.win_y;
     names = cfg.session_names ?? {};
+    cmds = cfg.session_cmds ?? {};
     setLang(cfg.language);
     FULL = new LogicalSize(
       Math.max(MIN_PANEL_W, cfg.panel_w),
@@ -829,6 +925,11 @@ async function init(): Promise<void> {
   try {
     await onSessionsUpdate((s) => {
       sessions = s;
+      // Skip the full rebuild when nothing the card paints actually changed —
+      // avoids the transparent-window flash on every backend push (e.g. a running
+      // session's frequent tool-call events). The live timer keeps ticking via
+      // tickTimers, which reads run_started_at without a re-render.
+      if (sessionsSig(s) === lastRenderSig) return;
       render();
     });
     await onFlash(async (kind, key) => {
@@ -944,6 +1045,12 @@ async function init(): Promise<void> {
   window.setInterval(tickTimers, 1000);
   void pollForeground();
   window.setInterval(() => void pollForeground(), 1200);
+  // Keep each card's editor-window line fresh on its own cadence (in-place text
+  // update, no rebuild) — decoupled from session pushes now that we skip renders
+  // that don't change the card content. Only while the panel is visible.
+  window.setInterval(() => {
+    if (!collapsed()) void refreshWindowLines();
+  }, 3000);
 
   // Check for an app update in the background (shows a banner if one is found).
   void checkForUpdate();
