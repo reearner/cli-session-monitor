@@ -16,6 +16,23 @@ fn source_label(s: Source) -> &'static str {
     }
 }
 
+/// The label the user identifies a session by: their custom card name if set,
+/// else the project (the cwd's last path segment). Put in the notification title
+/// so you can tell WHICH session finished — not just its directory.
+fn display_label(v: &SessionView, config: &Config) -> String {
+    if let Some(name) = config.session_names.get(&v.key.session_id) {
+        let name = name.trim();
+        if !name.is_empty() {
+            return name.to_string();
+        }
+    }
+    v.cwd
+        .rsplit(|c| c == '/' || c == '\\')
+        .find(|s| !s.is_empty())
+        .unwrap_or(v.cwd.as_str())
+        .to_string()
+}
+
 /// Fire a completion notification for `key`, looking up its view in `snapshot`.
 pub fn on_completed(app: &AppHandle, key: &SessionKey, snapshot: &[SessionView], config: &Config) {
     if !config.notifications {
@@ -25,7 +42,11 @@ pub fn on_completed(app: &AppHandle, key: &SessionKey, snapshot: &[SessionView],
     let view = snapshot.iter().find(|v| &v.key == key);
     let (title, body) = match view {
         Some(v) => (
-            lang.notify_finished_title(source_label(v.source)),
+            format!(
+                "{} · {}",
+                display_label(v, config),
+                lang.notify_finished_title(source_label(v.source))
+            ),
             format!(
                 "{}{}",
                 v.cwd,
@@ -71,7 +92,11 @@ pub fn on_awaiting_input(
     let view = snapshot.iter().find(|v| &v.key == key);
     let (title, body) = match view {
         Some(v) => (
-            lang.notify_waiting_title(source_label(v.source)),
+            format!(
+                "{} · {}",
+                display_label(v, config),
+                lang.notify_waiting_title(source_label(v.source))
+            ),
             lang.notify_waiting_body(&v.cwd),
         ),
         None => (
