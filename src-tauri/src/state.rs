@@ -133,14 +133,11 @@ impl StateMachine {
 
     /// Apply one event, returning any effects (currently: completion signals).
     pub fn apply(&mut self, ev: Event) -> Vec<Effect> {
-        // A real (live) event for a directory supersedes a discovered placeholder
-        // there, so we never show both a placeholder and the real session.
-        if ev.event != EventKind::Discovered && !ev.cwd.is_empty() {
-            let (src, host, cwd) = (ev.source, ev.host.clone(), ev.cwd.clone());
-            self.sessions.retain(|_, s| {
-                !(s.discovered && s.source == src && s.host == host && s.cwd == cwd)
-            });
-        }
+        // A discovered placeholder is keyed by the session's REAL id (same as the
+        // live key), so a live event for that session updates the very same card —
+        // we just clear its `discovered` flag (below) so it's no longer a
+        // placeholder. No dir-based de-dup needed: distinct sessions in one dir are
+        // distinct cards, and the same session folds onto itself by id.
         let key = SessionKey::of(&ev);
         // Fresh activity un-hides a session the user had closed.
         self.dismissed.remove(&key);
@@ -150,6 +147,7 @@ impl StateMachine {
                     .sessions
                     .entry(key)
                     .or_insert_with(|| SessionState::seed(&ev));
+                s.discovered = false; // a live event: this is a real session now
                 if !ev.cwd.is_empty() {
                     s.cwd = ev.cwd;
                 }
@@ -173,6 +171,7 @@ impl StateMachine {
                     .sessions
                     .entry(key.clone())
                     .or_insert_with(|| SessionState::seed(&ev));
+                s.discovered = false; // a live event: this is a real session now
                 if !ev.cwd.is_empty() {
                     s.cwd = ev.cwd;
                 }
@@ -194,6 +193,7 @@ impl StateMachine {
                     .sessions
                     .entry(key.clone())
                     .or_insert_with(|| SessionState::seed(&ev));
+                s.discovered = false; // a live event: this is a real session now
                 if !ev.cwd.is_empty() {
                     s.cwd = ev.cwd;
                 }
@@ -252,35 +252,22 @@ impl StateMachine {
     /// De-dupes to one placeholder per directory, drops placeholders whose dir
     /// left the scan, and yields to real sessions. Returns whether anything changed.
     pub fn reconcile_discovered(&mut self, items: Vec<(Event, bool)>) -> bool {
-        use std::collections::HashSet;
         let mut changed = false;
-        let present: HashSet<(Source, String, String)> = items
-            .iter()
-            .map(|(e, _)| (e.source, e.host.clone(), e.cwd.clone()))
-            .collect();
-        // Real (live) sessions' dirs: a discovered placeholder overlapping one of
-        // these is the same session at a different (cd'd) cwd and must be dropped,
-        // not just left un-updated — otherwise an already-created parent/child
-        // placeholder lingers next to the real card.
-        let real_dirs: Vec<(Source, String, String)> = self
+        // Placeholders are keyed by the session's REAL id (source+host+id), so each
+        // on-disk session gets its own resumable card — several in one directory
+        // stay distinct instead of collapsing to one.
+        let present: HashSet<SessionKey> = items.iter().map(|(e, _)| SessionKey::of(e)).collect();
+        // Ids of live (non-placeholder) sessions: the same session showing live
+        // supersedes its own placeholder, so we neither keep nor re-create it.
+        let live_ids: HashSet<SessionKey> = self
             .sessions
-            .values()
-            .filter(|s| !s.discovered)
-            .map(|s| (s.source, s.host.clone(), s.cwd.clone()))
+            .iter()
+            .filter(|(_, s)| !s.discovered)
+            .map(|(k, _)| k.clone())
             .collect();
         let before = self.sessions.len();
-        self.sessions.retain(|_, s| {
-            if !s.discovered {
-                return true;
-            }
-            if !present.contains(&(s.source, s.host.clone(), s.cwd.clone())) {
-                return false; // left the scan
-            }
-            // drop if a real session overlaps this placeholder's dir
-            !real_dirs.iter().any(|(src, host, cwd)| {
-                *src == s.source && *host == s.host && dir_overlap(cwd, &s.cwd)
-            })
-        });
+        self.sessions
+            .retain(|k, s| !s.discovered || (present.contains(k) && !live_ids.contains(k)));
         changed |= self.sessions.len() != before;
         // Drop dismiss marks whose session is gone, so the set can't grow without
         // bound or wrongly suppress a future session that reuses the key.
@@ -290,18 +277,9 @@ impl StateMachine {
             if ev.cwd.is_empty() {
                 continue;
             }
-            // A real session takes precedence over a placeholder — not just at the
-            // exact same dir, but at any ancestor/descendant dir: a live session
-            // that cd'd into a subdir (cwd from hooks) and a discovery placeholder
-            // at its launch/parent dir are the same session, so show only the real
-            // one instead of a parent+child pair.
-            let has_real = self.sessions.values().any(|s| {
-                !s.discovered
-                    && s.source == ev.source
-                    && s.host == ev.host
-                    && dir_overlap(&s.cwd, &ev.cwd)
-            });
-            if has_real {
+            let key = SessionKey::of(&ev);
+            // The same session is already live — its real card supersedes this one.
+            if live_ids.contains(&key) {
                 continue;
             }
             let want = if active {
@@ -309,21 +287,15 @@ impl StateMachine {
             } else {
                 SessionStatus::Idle
             };
-            match self.sessions.values_mut().find(|s| {
-                s.discovered && s.source == ev.source && s.host == ev.host && s.cwd == ev.cwd
-            }) {
-                Some(s) => {
+            match self.sessions.get_mut(&key) {
+                Some(s) if s.discovered => {
                     if s.status != want {
                         s.status = want;
                         changed = true;
                     }
                 }
+                Some(_) => {} // a live session at this key — leave it untouched
                 None => {
-                    let key = SessionKey {
-                        source: ev.source,
-                        host: ev.host.clone(),
-                        session_id: format!("disc:{}", ev.cwd),
-                    };
                     let mut st = SessionState::seed(&ev);
                     st.discovered = true;
                     st.status = want;
@@ -391,17 +363,6 @@ fn status_rank(s: SessionStatus) -> u8 {
         SessionStatus::Done => 2,
         SessionStatus::Idle => 3,
     }
-}
-
-/// Normalize a dir for comparison. Delegates to the shared `csm_core` impl so
-/// the state machine and the app normalize identically (single source of truth).
-fn norm_dir(s: &str) -> String {
-    csm_core::pathmatch::normalize_dir(s)
-}
-
-/// True if two dirs are the same or one is an ancestor of the other.
-fn dir_overlap(a: &str, b: &str) -> bool {
-    csm_core::pathmatch::dir_overlap(a, b)
 }
 
 #[cfg(test)]
@@ -490,9 +451,9 @@ mod tests {
     }
 
     #[test]
-    fn real_session_suppresses_overlapping_placeholder_keeps_unrelated() {
+    fn placeholder_folds_onto_live_session_by_id_distinct_sessions_stay() {
         let mut sm = StateMachine::new(120);
-        // A live session that cd'd into a subdir (its cwd comes from the hooks).
+        // A live session "real" that cd'd into a subdir (cwd comes from the hooks).
         sm.apply(Event::new(
             Source::ClaudeCode,
             "real",
@@ -501,15 +462,24 @@ mod tests {
             EventKind::RunStart,
             1000,
         ));
-        // Discovery surfaces a placeholder at the PARENT dir (same session's launch
-        // dir) and one at an UNRELATED dir.
-        let parent = Event::new(
+        // Discovery surfaces: the SAME session (id "real") seen at its parent dir
+        // (should fold by id), a DIFFERENT session ("p") in the same dir (should
+        // stay — distinct sessions are distinct cards), and an unrelated one ("o").
+        let same = Event::new(
             Source::ClaudeCode,
-            "p",
+            "real",
             "D:\\proj",
             "host",
             EventKind::Discovered,
             2000,
+        );
+        let sibling = Event::new(
+            Source::ClaudeCode,
+            "p",
+            "D:\\proj\\sub",
+            "host",
+            EventKind::Discovered,
+            2500,
         );
         let other = Event::new(
             Source::ClaudeCode,
@@ -519,59 +489,77 @@ mod tests {
             EventKind::Discovered,
             3000,
         );
-        sm.reconcile_discovered(vec![(parent, true), (other, true)]);
+        sm.reconcile_discovered(vec![(same, true), (sibling, true), (other, true)]);
 
         let snap = sm.snapshot();
-        assert_eq!(
-            snap.len(),
-            2,
-            "parent placeholder folded into the real session"
-        );
-        assert!(
-            snap.iter().any(|v| v.cwd == "D:\\proj\\sub"),
-            "real session kept"
-        );
-        assert!(
-            snap.iter().any(|v| v.cwd == "D:\\other"),
-            "unrelated placeholder kept"
-        );
-        assert!(
-            !snap.iter().any(|v| v.cwd == "D:\\proj"),
-            "ancestor placeholder of the real session is suppressed"
-        );
+        assert_eq!(snap.len(), 3, "live + sibling + unrelated (no dup for 'real')");
+        let real: Vec<_> = snap.iter().filter(|v| v.key.session_id == "real").collect();
+        assert_eq!(real.len(), 1, "the 'real' placeholder folded onto the live one");
+        assert_eq!(real[0].status, SessionStatus::Running, "kept the live card");
+        assert!(snap.iter().any(|v| v.key.session_id == "p"), "sibling session kept");
+        assert!(snap.iter().any(|v| v.key.session_id == "o"), "unrelated kept");
     }
 
     #[test]
-    fn lingering_placeholder_is_dropped_when_a_real_overlapping_session_appears() {
+    fn lingering_placeholder_folds_when_its_session_goes_live() {
         let mut sm = StateMachine::new(120);
-        let mk = || {
+        let disc = || {
             Event::new(
                 Source::ClaudeCode,
-                "p",
+                "s",
                 "D:\\proj",
                 "host",
                 EventKind::Discovered,
                 1000,
             )
         };
-        // 1) discovery creates a parent-dir placeholder (no real session yet)
-        sm.reconcile_discovered(vec![(mk(), true)]);
+        // 1) discovery creates a placeholder for session "s" (no real session yet)
+        sm.reconcile_discovered(vec![(disc(), true)]);
         assert_eq!(sm.snapshot().len(), 1);
-        // 2) a real session starts in a subdir (the live cwd cd'd in)
+        // 2) that same session goes live in a subdir (its cwd cd'd in)
         sm.apply(Event::new(
             Source::ClaudeCode,
-            "real",
+            "s",
             "D:\\proj\\sub",
             "host",
             EventKind::RunStart,
             2000,
         ));
-        // 3) the next discovery cycle still sees the parent dir, but must drop the
-        //    now-redundant placeholder rather than leave it beside the real card.
-        sm.reconcile_discovered(vec![(mk(), true)]);
+        // 3) the next discovery cycle still lists "s", but it's live now — the
+        //    placeholder must fold onto the live card (by id), not sit beside it.
+        sm.reconcile_discovered(vec![(disc(), true)]);
         let snap = sm.snapshot();
-        assert_eq!(snap.len(), 1, "lingering parent placeholder dropped");
+        assert_eq!(snap.len(), 1, "placeholder folded onto the live session");
+        assert_eq!(snap[0].status, SessionStatus::Running);
         assert_eq!(snap[0].cwd, "D:\\proj\\sub");
+    }
+
+    #[test]
+    fn multiple_sessions_in_one_dir_each_get_a_card() {
+        let mut sm = StateMachine::new(120);
+        let mk = |id: &str, ts: i64| {
+            Event::new(
+                Source::ClaudeCode,
+                id,
+                "D:\\proj",
+                "host",
+                EventKind::Discovered,
+                ts,
+            )
+        };
+        sm.reconcile_discovered(vec![
+            (mk("a", 1000), false),
+            (mk("b", 2000), false),
+            (mk("c", 3000), false),
+        ]);
+        let snap = sm.snapshot();
+        assert_eq!(snap.len(), 3, "three sessions in one dir → three grey cards");
+        for id in ["a", "b", "c"] {
+            assert!(
+                snap.iter().any(|v| v.key.session_id == id),
+                "session {id} has its own resumable card"
+            );
+        }
     }
 
     #[test]

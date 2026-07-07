@@ -16,6 +16,9 @@ use crate::codex_rollout::{read_head_cwd, thread_id_from_filename};
 
 /// Cap on how many discovered sessions to surface (newest first).
 const CAP: usize = 40;
+/// Cap per directory, so one busy project can't fill the whole panel while still
+/// letting a handful of that dir's recent sessions each get their own card.
+const PER_DIR_CAP: usize = 4;
 
 /// Scan Codex rollouts + Claude transcripts modified within `recent_secs` and
 /// return `Discovered` events (newest first, capped). Never errors — missing
@@ -29,22 +32,26 @@ pub fn discover_sessions(recent_secs: u64) -> Vec<Event> {
     collect_codex(&paths::codex_sessions_dir(), cutoff, &host, &mut found);
     collect_claude(&paths::claude_projects_dir(), cutoff, &host, &mut found);
 
-    // Each CLI run is a separate session file, so one project dir accumulates
-    // many. Collapse to one card per (source, host, cwd): keep the newest.
-    let mut newest: HashMap<(Source, String, String), (i64, Event)> = HashMap::new();
-    for (mtime, ev) in found {
-        let key = (ev.source, ev.host.clone(), ev.cwd.clone());
-        match newest.get(&key) {
-            Some((m, _)) if *m >= mtime => {}
-            _ => {
-                newest.insert(key, (mtime, ev));
-            }
-        }
-    }
-    let mut found: Vec<(i64, Event)> = newest.into_values().collect();
+    // Each CLI run is a separate session file (distinct session id), and every one
+    // should be resumable on its own card — so we DON'T collapse a directory to a
+    // single card. We do cap how many a single directory contributes so one busy
+    // project can't flood the panel, plus a global cap. Newest first throughout.
     found.sort_by_key(|(mtime, _)| std::cmp::Reverse(*mtime)); // newest first
-    found.truncate(CAP);
-    found.into_iter().map(|(_, e)| e).collect()
+    let mut per_dir: HashMap<(Source, String, String), usize> = HashMap::new();
+    let mut out: Vec<Event> = Vec::new();
+    for (_, ev) in found {
+        if out.len() >= CAP {
+            break;
+        }
+        let key = (ev.source, ev.host.clone(), ev.cwd.clone());
+        let n = per_dir.entry(key).or_insert(0);
+        if *n >= PER_DIR_CAP {
+            continue;
+        }
+        *n += 1;
+        out.push(ev);
+    }
+    out
 }
 
 fn collect_codex(dir: &Path, cutoff: i64, host: &str, out: &mut Vec<(i64, Event)>) {

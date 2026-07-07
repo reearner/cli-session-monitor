@@ -178,11 +178,34 @@ impl Config {
     /// Read config from `path`, falling back to [`Config::default`] if the file is
     /// missing or unparseable. Never errors.
     pub fn load_from(path: impl AsRef<Path>) -> Self {
-        match std::fs::read_to_string(path.as_ref()) {
-            Ok(text) => serde_json::from_str(&text).unwrap_or_else(|err| {
-                eprintln!("config: parse failed ({err}); using defaults");
-                Config::default()
-            }),
+        let path = path.as_ref();
+        match std::fs::read_to_string(path) {
+            Ok(text) => {
+                // Tolerate a leading UTF-8 BOM (e.g. a file written by PowerShell's
+                // `Set-Content -Encoding utf8`). serde_json rejects a BOM, which
+                // would silently reset the WHOLE config — and the next save would
+                // then overwrite the user's real data with defaults.
+                let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+                serde_json::from_str(text).unwrap_or_else(|err| {
+                    eprintln!("config: parse failed ({err}); using defaults");
+                    // Archive the unparseable file first, so its data isn't lost
+                    // when defaults are later saved over it.
+                    if let Some(parent) = path.parent() {
+                        let backups = parent.join("backups");
+                        if std::fs::create_dir_all(&backups).is_ok() {
+                            let stamp = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_millis())
+                                .unwrap_or(0);
+                            let _ = std::fs::copy(
+                                path,
+                                backups.join(format!("config-unparsed-{stamp}.json")),
+                            );
+                        }
+                    }
+                    Config::default()
+                })
+            }
             Err(_) => Config::default(),
         }
     }
@@ -269,6 +292,24 @@ mod tests {
         };
         cfg.save_to(&path).unwrap();
         assert_eq!(Config::load_from(&path), cfg);
+    }
+
+    #[test]
+    fn leading_utf8_bom_is_tolerated() {
+        // A config written by PowerShell (`Set-Content -Encoding utf8`) starts with
+        // a UTF-8 BOM; it must still parse, not silently reset to defaults.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let mut cfg = Config::default();
+        cfg.session_names
+            .insert("id".to_string(), "kept".to_string());
+        let json = format!("\u{feff}{}", serde_json::to_string(&cfg).unwrap());
+        std::fs::write(&path, json).unwrap();
+        let loaded = Config::load_from(&path);
+        assert_eq!(
+            loaded.session_names.get("id").map(String::as_str),
+            Some("kept")
+        );
     }
 
     #[test]

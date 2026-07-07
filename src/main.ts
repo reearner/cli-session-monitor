@@ -471,9 +471,10 @@ let lastRenderSig = "";
 // editing; the commit re-renders once with the final state.
 let editing = false;
 
-// The auto-generated resume command for a card: real sessions resume by id;
-// grey/discovered cards (dir only, no id) continue the most recent session in
-// that folder. A remembered custom command (cmds[id]) overrides this.
+// The auto-generated resume command for a card. Every card — live or
+// discovered-from-disk — is keyed by a real session id, so it resumes that exact
+// session. A remembered custom command (cmds[id]) overrides this. The `--last`
+// fallback only ever fires for a hypothetical id-less placeholder.
 function defaultResumeCmd(v: SessionView): string {
   const id = v.key.session_id;
   const isReal = !id.startsWith("disc:");

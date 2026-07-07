@@ -33,8 +33,9 @@ export function createCard(v: SessionView, localHost = "", customName = ""): HTM
   const card = el("div", `card status-${v.status} src-${v.source}`);
   card.dataset.key = keyId(v.key);
 
-  // Real sessions carry a UUID; discovered placeholders are keyed by dir
-  // ("disc:..."), which isn't a resumable session id.
+  // Every card — live OR discovered-from-disk — is keyed by a real session id, so
+  // it can be renamed and resumed by id. (Kept as a guard against any id-less
+  // placeholder ever slipping through.)
   const real = !v.key.session_id.startsWith("disc:");
 
   // Headline = a user-assigned name if set (persisted by session id, so it sticks
@@ -64,8 +65,7 @@ export function createCard(v: SessionView, localHost = "", customName = ""): HTM
     head.append(rename);
   }
   // Copy the resume command (wired in main.ts) so you can paste it into a terminal.
-  // Real sessions copy an exact `--resume <id>`; grey/discovered cards (dir only,
-  // no id) copy a "continue the most recent session in this folder" command.
+  // Every card — including grey/discovered ones — copies an exact `--resume <id>`.
   const resume = el("button", "card-resume", "⧉");
   resume.title = real ? t("card.copyResume") : t("card.copyResumeDir");
   head.append(resume);

@@ -771,8 +771,9 @@ body.docked.flash-waiting .pill {
   }
 }
 
-/* Auto-update banner — pinned to the bottom of the panel; in ball mode the tiny
-   window clips it, so it only shows in the expanded panel. */
+/* Auto-update banner — pinned to the bottom of the panel. Only meaningful in the
+   expanded panel; in ball / docked-bar mode the tiny window can't show it and it
+   would just occupy the strip, so hide it there. */
 .update-bar {
   position: fixed;
   left: 0;
@@ -786,6 +787,10 @@ body.docked.flash-waiting .pill {
   background: var(--panel);
   border-top: 1px solid var(--accent);
   font-size: 12px;
+}
+body.ball .update-bar,
+body.docked .update-bar {
+  display: none;
 }
 .update-text {
   flex: 1;

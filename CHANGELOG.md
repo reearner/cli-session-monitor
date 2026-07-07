@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-07-07
+
+### Changed
+- **Every past session gets its own grey card.** Sessions discovered on disk used to collapse to one card per folder; now each session (each window you had open) is its own resumable card, so you can copy each one's exact relaunch command. Every grey card copies an exact `claude --resume <id>` / `codex resume <id>` (not a folder-wide `--continue`) and can be renamed like a live card, with the name persisting by session id. Capped at 4 per folder / 40 total, newest first, so a busy project can't flood the panel.
+
+### Fixed
+- **Your config can no longer be silently reset (data-loss fix).** A leading UTF-8 BOM — as written by PowerShell's `Set-Content -Encoding utf8` — made the parser reject the entire `config.json`, resetting it to defaults; the next save then overwrote your real data, wiping card names, remembered commands, the relay topic, and retention settings. The loader now tolerates a leading BOM and, if a config is still unparseable, archives it to `backups/` before falling back to defaults — so nothing is lost.
+- **The update banner no longer covers the collapsed bar or floating ball.** In compact (ball / docked-bar) modes the "update available" strip is hidden so it can't occupy the widget's tiny display.
+
 ## [0.1.6] - 2026-07-01
 
 ### Added

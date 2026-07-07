@@ -13,8 +13,10 @@
 </p>
 
 <p align="center">
-  <b>See which of your Claude Code / Codex sessions is running, waiting for you, or
-  done — at a glance, and jump to any of them in one click.</b>
+  <b>👁️ A cyber-foreman for your AI coding crew.</b><br/>
+  See which <b>Claude Code</b> / <b>Codex</b> session is grinding, slacking off waiting
+  on you, or clocked out done — from the corner of your screen — and jump to any of
+  them in one click. Your agents are working; this is how you keep an eye on them.
 </p>
 
 > A lightweight Windows desktop widget that shows, at a glance, the live status
