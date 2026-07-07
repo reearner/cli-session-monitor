@@ -1130,10 +1130,13 @@ while [ $# -gt 0 ]; do
       INCLUDE_DIRS="${INCLUDE_DIRS:+$INCLUDE_DIRS:}$1" ;;
     --include-dir=*)  INCLUDE_DIRS="${INCLUDE_DIRS:+$INCLUDE_DIRS:}${1#*=}" ;;
     -h|--help)
-      echo "Usage: bash remote-agent.sh [--include-dir DIR ...] [--install-claude | --uninstall]" >&2
-      echo "  --include-dir DIR   relay ONLY sessions under DIR (repeatable; subdirs count)" >&2
-      echo "  --install-claude    install Claude Code hooks here, then run" >&2
-      echo "  --uninstall         remove the Claude hooks, then exit" >&2
+      # Explicitly requested help goes to stdout (exit 0); error usage below uses stderr.
+      echo "Usage: bash remote-agent.sh [--include-dir DIR ...] [--install-claude | --uninstall]"
+      echo "  --include-dir DIR   relay ONLY sessions under DIR (repeatable; subdirs count)"
+      echo "                      (equivalent to setting CSM_WATCH_DIRS=DIR in the environment)"
+      echo "  --install-claude    install Claude Code hooks here, then run"
+      echo "  --uninstall         remove the Claude hooks, then exit"
+      echo "  -h, --help          show this help and exit"
       exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
