@@ -24,6 +24,16 @@ pub fn dir_overlap(a: &str, b: &str) -> bool {
         && (a == b || a.starts_with(&format!("{b}\\")) || b.starts_with(&format!("{a}\\")))
 }
 
+/// True if `child` is `ancestor` itself or nested inside it (after normalization).
+/// DIRECTED, unlike [`dir_overlap`]: `is_under("/a", "/a/b")` is false — a parent
+/// is not "under" its child. Used by the remote agent's `CSM_WATCH_DIRS` whitelist
+/// (only relay a session whose cwd is inside a watched project dir). Empty dirs are
+/// never under anything.
+pub fn is_under(child: &str, ancestor: &str) -> bool {
+    let (c, a) = (normalize_dir(child), normalize_dir(ancestor));
+    !c.is_empty() && !a.is_empty() && (c == a || c.starts_with(&format!("{a}\\")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,5 +59,17 @@ mod tests {
         assert!(!dir_overlap("D:\\app", "D:\\app2")); // shared prefix, not a path boundary
         assert!(!dir_overlap("", "D:\\a")); // empty
         assert!(!dir_overlap("D:\\a", "")); // empty
+    }
+
+    #[test]
+    fn is_under_matches_self_and_descendants_only() {
+        assert!(is_under("/home/me/proj", "/home/me/proj")); // self
+        assert!(is_under("/home/me/proj/src", "/home/me/proj")); // descendant
+        assert!(is_under("/home/me/Proj/Sub", "/home/me/proj")); // case-insensitive
+        assert!(!is_under("/home/me", "/home/me/proj")); // parent is NOT under child
+        assert!(!is_under("/home/me/proj2", "/home/me/proj")); // shared prefix, not a boundary
+        assert!(!is_under("/home/me/other", "/home/me/proj")); // sibling
+        assert!(!is_under("", "/home/me/proj")); // empty child
+        assert!(!is_under("/home/me/proj", "")); // empty ancestor
     }
 }
