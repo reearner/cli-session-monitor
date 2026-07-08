@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-07-08
+
 ### Added
-- **Remote agent can watch just one project.** `remote-agent.sh` now takes `--include-dir DIR` (repeatable; subdirectories count) so a monitor running on a shared VM relays only the sessions inside the folders you name — every other session never leaves the box (no card, no notification on the desktop). Equivalent to setting `CSM_WATCH_DIRS=/path` in the environment.
+- **Remote agent can watch just one project.** `remote-agent.sh` now takes `--include-dir DIR` (repeatable; subdirectories count) so a monitor running on a shared VM relays only the sessions inside the folders you name — every other session never leaves the box (no card, no notification on the desktop). Equivalent to setting `CSM_WATCH_DIRS=/path` in the environment. The launcher also gained `-h`/`--help`.
 
 ## [0.1.7] - 2026-07-07
 
