@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`remote-agent.sh --update`.** Deletes the local agent binaries so the launcher re-fetches the latest release, then runs — upgrading a VM after a release is now one command (`bash remote-agent.sh --update --include-dir …`) instead of a manual `rm`. Composes with `--include-dir` / `--install-claude`.
+
 ## [0.1.8] - 2026-07-08
 
 ### Added

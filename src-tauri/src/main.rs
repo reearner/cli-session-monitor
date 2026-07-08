@@ -1099,6 +1099,7 @@ fn export_agent_script(state: State<AppState>) -> Result<String, String> {
 #                                             subdirs count). Same as: CSM_WATCH_DIRS=DIR ...
 #   bash remote-agent.sh --install-claude     install Claude Code hooks here, then run
 #   bash remote-agent.sh --uninstall          remove the Claude hooks installed here, then exit
+#   bash remote-agent.sh --update             re-download the agent binaries (latest release), then run
 #
 # Needs two small binaries on THIS host: csm-agent and session-reporter. On
 # x86_64 Linux this script AUTO-DOWNLOADS them from the GitHub release on first
@@ -1120,10 +1121,12 @@ export CSM_RELAY_TOPIC=@@TOPIC@@
 # relays ONLY sessions whose working dir is inside one of those dirs.
 MODE="run"
 INCLUDE_DIRS=""
+FORCE_UPDATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --install-claude) MODE="install" ;;
     --uninstall)      MODE="uninstall" ;;
+    --update)         FORCE_UPDATE=1 ;;
     --include-dir)
       shift
       [ $# -gt 0 ] || { echo "--include-dir needs a path" >&2; exit 2; }
@@ -1131,11 +1134,12 @@ while [ $# -gt 0 ]; do
     --include-dir=*)  INCLUDE_DIRS="${INCLUDE_DIRS:+$INCLUDE_DIRS:}${1#*=}" ;;
     -h|--help)
       # Explicitly requested help goes to stdout (exit 0); error usage below uses stderr.
-      echo "Usage: bash remote-agent.sh [--include-dir DIR ...] [--install-claude | --uninstall]"
+      echo "Usage: bash remote-agent.sh [--include-dir DIR ...] [--update] [--install-claude | --uninstall]"
       echo "  --include-dir DIR   relay ONLY sessions under DIR (repeatable; subdirs count)"
       echo "                      (equivalent to setting CSM_WATCH_DIRS=DIR in the environment)"
       echo "  --install-claude    install Claude Code hooks here, then run"
       echo "  --uninstall         remove the Claude hooks, then exit"
+      echo "  --update            re-download the agent binaries (latest release), then run"
       echo "  -h, --help          show this help and exit"
       exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
@@ -1147,6 +1151,13 @@ if [ -n "$INCLUDE_DIRS" ]; then
   export CSM_WATCH_DIRS="$INCLUDE_DIRS"
 else
   export CSM_WATCH_DIRS="${CSM_WATCH_DIRS:-}"
+fi
+
+# --update: drop any local agent binaries so `locate` re-fetches the latest release
+# (the script otherwise reuses a binary that already exists locally, never updating).
+if [ "$FORCE_UPDATE" = 1 ]; then
+  echo "Updating: removing local csm-agent / session-reporter to re-fetch the latest release..." >&2
+  rm -f ./csm-agent ./session-reporter
 fi
 
 # Prebuilt static binaries live in the GitHub release; auto-fetched on first run
