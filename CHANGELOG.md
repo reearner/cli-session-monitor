@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **`remote-agent.sh --update`.** Deletes the local agent binaries so the launcher re-fetches the latest release, then runs — upgrading a VM after a release is now one command (`bash remote-agent.sh --update --include-dir …`) instead of a manual `rm`. Composes with `--include-dir` / `--install-claude`.
 
+### Changed
+- **The remote agent no longer floods the relay.** Claude fires a hook on every tool call (`PreToolUse`/`PostToolUse`), which the agent relayed as a `RunStart` each time — a busy session could blow past ntfy.sh's rate limit (HTTP 429). The agent now coalesces consecutive same-kind events per session and publishes only actual state changes, cutting relay traffic by roughly an order of magnitude. The desktop view is unchanged (a card already showing "running" doesn't need repeat run-starts).
+
 ## [0.1.8] - 2026-07-08
 
 ### Added

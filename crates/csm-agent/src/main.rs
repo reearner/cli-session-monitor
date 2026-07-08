@@ -1,6 +1,8 @@
 //! csm-agent — runs on a (remote) machine where Codex/Claude execute, watches
 //! their session files, and publishes normalized events to an ntfy relay topic
 //! that the desktop app subscribes to. No SSH required; only metadata is sent.
+//! Redundant same-kind bursts (e.g. a RunStart per Claude tool call) are coalesced
+//! so the relay isn't flooded / rate-limited.
 //!
 //! Config via env:
 //!   CSM_RELAY_TOPIC  (required)  the ntfy topic to publish to
@@ -11,10 +13,11 @@
 //!                                are relayed (others never leave this host). The
 //!                                generated remote-agent.sh sets it via --include-dir.
 
+use std::collections::HashMap;
 use std::sync::mpsc;
 use std::thread;
 
-use csm_core::Event;
+use csm_core::{Event, EventKind, SessionKey};
 use csm_watch::{ntfy, CodexRolloutSource, FsWatchSource, Source};
 
 /// Parse `CSM_WATCH_DIRS` (colon-separated, PATH-style) into a whitelist, dropping
@@ -33,6 +36,16 @@ fn parse_watch_dirs(raw: &str) -> Vec<String> {
 fn cwd_allowed(cwd: &str, watch: &[String]) -> bool {
     watch.is_empty()
         || (!cwd.is_empty() && watch.iter().any(|w| csm_core::pathmatch::is_under(cwd, w)))
+}
+
+/// Whether an event just repeats the last kind already published for its session,
+/// carrying no new visible state. Claude fires PreToolUse+PostToolUse (both map to
+/// `RunStart`) on EVERY tool call, but the card is already "running" — relaying each
+/// one only burns ntfy quota (hitting 429s). Coalescing these away cuts relay
+/// traffic by an order of magnitude. A real state CHANGE (RunStart after Waiting,
+/// RunEnd, …) differs from the last kind, so it is never suppressed.
+fn is_redundant(last_for_session: Option<EventKind>, ev: EventKind) -> bool {
+    last_for_session == Some(ev)
 }
 
 fn main() {
@@ -72,14 +85,29 @@ fn main() {
     thread::spawn(move || CodexRolloutSource::new(CodexRolloutSource::default_dir()).run(tx));
     thread::spawn(move || FsWatchSource::new(FsWatchSource::default_dir()).run(tx2));
 
+    // Last kind successfully published per session, to coalesce redundant same-kind
+    // bursts (see `is_redundant`). Recorded on success only, so a dropped publish is
+    // retried on the next event rather than silently swallowed.
+    let mut last_published: HashMap<SessionKey, EventKind> = HashMap::new();
     for ev in rx {
         // Directory whitelist: sessions outside the watched dirs never leave this
         // host (no card, no notification on the desktop).
         if !cwd_allowed(&ev.cwd, &watch_dirs) {
             continue;
         }
-        if let Err(e) = ntfy::publish(&base, &topic, token.as_deref(), &ev) {
-            eprintln!("csm-agent: publish failed: {e}");
+        let key = SessionKey::of(&ev);
+        if is_redundant(last_published.get(&key).copied(), ev.event) {
+            continue; // same visible state as last relayed — don't spam the topic
+        }
+        match ntfy::publish(&base, &topic, token.as_deref(), &ev) {
+            Ok(()) => {
+                if ev.event == EventKind::SessionEnd {
+                    last_published.remove(&key); // session gone; a resume starts fresh
+                } else {
+                    last_published.insert(key, ev.event);
+                }
+            }
+            Err(e) => eprintln!("csm-agent: publish failed: {e}"),
         }
     }
 }
@@ -120,5 +148,16 @@ mod tests {
         assert!(cwd_allowed("/home/a/x", &watch));
         assert!(cwd_allowed("/srv/b", &watch));
         assert!(!cwd_allowed("/home/c", &watch));
+    }
+
+    #[test]
+    fn redundant_suppresses_only_consecutive_same_kind() {
+        use EventKind::*;
+        assert!(!is_redundant(None, RunStart)); // first event always publishes
+        assert!(is_redundant(Some(RunStart), RunStart)); // per-tool-call spam -> drop
+        assert!(is_redundant(Some(WaitingInput), WaitingInput)); // repeated Notification
+        assert!(!is_redundant(Some(WaitingInput), RunStart)); // resumed -> state change
+        assert!(!is_redundant(Some(RunStart), RunEnd)); // finished -> state change
+        assert!(!is_redundant(Some(RunEnd), RunStart)); // new turn -> state change
     }
 }
