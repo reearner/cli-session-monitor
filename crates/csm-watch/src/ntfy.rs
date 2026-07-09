@@ -23,16 +23,46 @@ fn base_trim(base: &str) -> &str {
     base.trim_end_matches('/')
 }
 
+/// Why a publish failed. `RateLimited` (HTTP 429) is called out separately so the
+/// caller can back off instead of hammering: ntfy refills a visitor's request
+/// bucket slowly (~1 request / 5s), and clients that ignore 429 can get their IP
+/// temporarily blocked.
+#[derive(Debug)]
+pub enum PublishError {
+    /// The relay rejected us with HTTP 429 — wait before publishing again.
+    RateLimited,
+    Other(Box<dyn std::error::Error>),
+}
+
+impl std::fmt::Display for PublishError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PublishError::RateLimited => write!(f, "rate limited by the relay (HTTP 429)"),
+            PublishError::Other(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for PublishError {}
+
 /// Publish one event to `<base>/<topic>` (the POST body is the event JSON).
-pub fn publish(base: &str, topic: &str, token: Option<&str>, event: &Event) -> Result<(), DynErr> {
+pub fn publish(
+    base: &str,
+    topic: &str,
+    token: Option<&str>,
+    event: &Event,
+) -> Result<(), PublishError> {
     let url = format!("{}/{}", base_trim(base), topic);
-    let body = serde_json::to_string(event)?;
+    let body = serde_json::to_string(event).map_err(|e| PublishError::Other(Box::new(e)))?;
     let mut req = ureq::post(&url).set("X-CSM", "1");
     if let Some(t) = token {
         req = req.set("Authorization", &format!("Bearer {t}"));
     }
-    req.send_string(&body)?;
-    Ok(())
+    match req.send_string(&body) {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(429, _)) => Err(PublishError::RateLimited),
+        Err(e) => Err(PublishError::Other(Box::new(e))),
+    }
 }
 
 /// Subscribes to `<base>/<topic>/json` and feeds parsed events to the channel,

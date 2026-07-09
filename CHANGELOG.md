@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The remote agent backs off instead of hammering a rate-limited relay.** On HTTP 429 it kept firing one failed request per event, which held ntfy's request bucket empty (it refills only ~1 request per 5s), risked an IP block, and flooded the log with an identical error line per event. It now waits — 5s on the first 429, doubling to a 60s cap, reset on success — and logs only when the wait changes. Together with event coalescing this keeps a busy session inside ntfy.sh's sustained rate.
+
 ## [0.1.9] - 2026-07-08
 
 ### Added

@@ -2,7 +2,8 @@
 //! their session files, and publishes normalized events to an ntfy relay topic
 //! that the desktop app subscribes to. No SSH required; only metadata is sent.
 //! Redundant same-kind bursts (e.g. a RunStart per Claude tool call) are coalesced
-//! so the relay isn't flooded / rate-limited.
+//! so the relay isn't flooded, and a rate-limited (429) relay makes the agent back
+//! off exponentially rather than hammer it.
 //!
 //! Config via env:
 //!   CSM_RELAY_TOPIC  (required)  the ntfy topic to publish to
@@ -16,9 +17,34 @@
 use std::collections::HashMap;
 use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 
 use csm_core::{Event, EventKind, SessionKey};
+use csm_watch::ntfy::PublishError;
 use csm_watch::{ntfy, CodexRolloutSource, FsWatchSource, Source};
+
+/// ntfy refills a visitor's request bucket at roughly one request per 5s, so a
+/// rate-limited publish waits at least that long before trying again.
+const RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(5);
+/// Other failures (e.g. a network blip) start with a shorter pause.
+const ERROR_BACKOFF: Duration = Duration::from_secs(1);
+/// Upper bound, so a long outage doesn't stall the agent forever.
+const MAX_BACKOFF: Duration = Duration::from_secs(60);
+
+/// Next wait after a failed publish: start at the kind-appropriate base, then
+/// double on each further failure, capped. Hammering a relay that answered 429 only
+/// keeps its bucket empty (and can get the IP blocked), so we always wait.
+fn next_backoff(current: Option<Duration>, rate_limited: bool) -> Duration {
+    let base = if rate_limited {
+        RATE_LIMIT_BACKOFF
+    } else {
+        ERROR_BACKOFF
+    };
+    match current {
+        None => base,
+        Some(d) => (d * 2).min(MAX_BACKOFF).max(base),
+    }
+}
 
 /// Parse `CSM_WATCH_DIRS` (colon-separated, PATH-style) into a whitelist, dropping
 /// blank entries. An empty result means "no filter — relay every session".
@@ -89,6 +115,9 @@ fn main() {
     // bursts (see `is_redundant`). Recorded on success only, so a dropped publish is
     // retried on the next event rather than silently swallowed.
     let mut last_published: HashMap<SessionKey, EventKind> = HashMap::new();
+    // Pending wait imposed by the relay's rate limit (see `next_backoff`). While set,
+    // we pause before each attempt instead of hammering.
+    let mut backoff: Option<Duration> = None;
     for ev in rx {
         // Directory whitelist: sessions outside the watched dirs never leave this
         // host (no card, no notification on the desktop).
@@ -99,15 +128,32 @@ fn main() {
         if is_redundant(last_published.get(&key).copied(), ev.event) {
             continue; // same visible state as last relayed — don't spam the topic
         }
+        if let Some(wait) = backoff {
+            thread::sleep(wait); // relay asked us to slow down; honour it
+        }
         match ntfy::publish(&base, &topic, token.as_deref(), &ev) {
             Ok(()) => {
+                if backoff.take().is_some() {
+                    eprintln!("csm-agent: relay recovered; resuming normal publishing");
+                }
                 if ev.event == EventKind::SessionEnd {
                     last_published.remove(&key); // session gone; a resume starts fresh
                 } else {
                     last_published.insert(key, ev.event);
                 }
             }
-            Err(e) => eprintln!("csm-agent: publish failed: {e}"),
+            Err(e) => {
+                let next = next_backoff(backoff, matches!(e, PublishError::RateLimited));
+                // Log only when the wait changes, so a long outage can't flood the log
+                // with one identical line per event (as a 429 storm used to).
+                if backoff != Some(next) {
+                    eprintln!(
+                        "csm-agent: publish failed ({e}); backing off {}s",
+                        next.as_secs()
+                    );
+                }
+                backoff = Some(next);
+            }
         }
     }
 }
@@ -148,6 +194,18 @@ mod tests {
         assert!(cwd_allowed("/home/a/x", &watch));
         assert!(cwd_allowed("/srv/b", &watch));
         assert!(!cwd_allowed("/home/c", &watch));
+    }
+
+    #[test]
+    fn backoff_starts_at_base_doubles_and_caps() {
+        let s = Duration::from_secs;
+        assert_eq!(next_backoff(None, true), s(5)); // 429 waits out ntfy's ~1/5s refill
+        assert_eq!(next_backoff(None, false), s(1)); // a plain error starts shorter
+        assert_eq!(next_backoff(Some(s(5)), true), s(10)); // doubles
+        assert_eq!(next_backoff(Some(s(10)), true), s(20));
+        assert_eq!(next_backoff(Some(s(40)), true), s(60)); // capped
+        assert_eq!(next_backoff(Some(s(60)), true), s(60)); // stays at the cap
+        assert_eq!(next_backoff(Some(s(1)), true), s(5)); // 429 never waits below base
     }
 
     #[test]
