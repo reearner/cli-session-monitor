@@ -1527,10 +1527,18 @@ fn spawn_idle_ticker(app: AppHandle) {
 /// taskbar visibility, desktop-pin vs always-on-top, left docking, and autostart.
 fn apply_window_prefs(app: &AppHandle, cfg: &Config) {
     if let Some(win) = app.get_webview_window("main") {
-        let _ = win.set_skip_taskbar(cfg.skip_taskbar);
-        // Lightweight (floating-ball) mode => tool window: out of taskbar AND the
-        // Alt-Tab switcher, so it behaves like a desktop orb, not an app.
-        set_tool_window(&win, cfg.lightweight);
+        // Lightweight (floating-ball / bar) mode => tool window: out of the taskbar
+        // AND the Alt-Tab switcher, so it behaves like a desktop orb, not an app.
+        // Don't ALSO call set_skip_taskbar here: with skip_taskbar=false it clears
+        // WS_EX_TOOLWINDOW, fighting the line below and letting a stray taskbar icon
+        // back in. In lightweight the tool-window style is the single source of truth;
+        // skip_taskbar only governs the full panel.
+        if cfg.lightweight {
+            set_tool_window(&win, true);
+        } else {
+            set_tool_window(&win, false);
+            let _ = win.set_skip_taskbar(cfg.skip_taskbar);
+        }
 
         if cfg.desktop_pinned {
             let _ = win.set_always_on_top(false);
@@ -1567,22 +1575,37 @@ fn apply_window_prefs(app: &AppHandle, cfg: &Config) {
 fn set_tool_window(window: &tauri::WebviewWindow, enable: bool) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
-        SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+        GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+        GWL_EXSTYLE, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNA,
+        WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
     };
     let hwnd = match window.hwnd() {
         Ok(h) => HWND(h.0 as _),
         Err(_) => return,
     };
     unsafe {
-        let mut ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        if enable {
-            ex |= WS_EX_TOOLWINDOW.0 as isize;
-            ex &= !(WS_EX_APPWINDOW.0 as isize);
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let want = if enable {
+            (ex | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize)
         } else {
-            ex &= !(WS_EX_TOOLWINDOW.0 as isize);
+            ex & !(WS_EX_TOOLWINDOW.0 as isize)
+        };
+        if want == ex {
+            return; // already right — skip the visibility cycle below (it would flicker)
         }
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
+        // Windows decides whether a window gets a TASKBAR BUTTON at the moment it is
+        // shown. Adding WS_EX_TOOLWINDOW to an ALREADY-VISIBLE window changes the
+        // style but leaves the existing button behind — the stray "app icon" that
+        // reappeared every launch. The button is only re-evaluated on show, so cycle
+        // visibility around the style change. SW_SHOWNA re-shows without taking focus.
+        let visible = IsWindowVisible(hwnd).as_bool();
+        if visible {
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, want);
+        if visible {
+            let _ = ShowWindow(hwnd, SW_SHOWNA);
+        }
         let _ = SetWindowPos(
             hwnd,
             None,
