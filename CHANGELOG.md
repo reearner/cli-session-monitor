@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-07-12
+
 ### Fixed
 - **No more stray taskbar icon for the floating ball / docked bar.** In lightweight mode the widget sets `WS_EX_TOOLWINDOW` to stay out of the taskbar and Alt-Tab — but Windows only decides a window's taskbar button at the moment the window is *shown*, so applying the style to an already-visible window left the existing button behind and an app icon reappeared on every launch. The style change now cycles the window's visibility (re-showing without stealing focus). Lightweight mode also no longer calls `set_skip_taskbar(false)`, which was clearing the very `WS_EX_TOOLWINDOW` style it depends on.
 
