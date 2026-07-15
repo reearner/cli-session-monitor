@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-07-15
+
 ### Fixed
 - **`remote-agent.sh --update` can no longer be silently defeated by a stale binary on `$PATH`.** `--update` removed only `./csm-agent`, but the launcher looked up the binary on `$PATH` *first* — so a `csm-agent` installed elsewhere on `$PATH` would win, and the agent kept running old code (e.g. ignoring `CSM_WATCH_DIRS`, so `--include-dir` filtering never took effect) no matter how many times you updated. Under `--update` the launcher now ignores any pre-existing `$PATH`/`./` copy and force-fetches the latest release.
 - **The widget stays on top for real now.** Windows silently demotes always-on-top windows in situations that fire no event we can hook (another app going fullscreen, certain focus changes), after which the widget slipped behind other windows until you re-toggled "always on top" by hand. A background keeper now re-asserts topmost about once a minute while the setting is on (and skips it when you've deliberately pinned the widget to the desktop), reclaiming the top spot without stealing focus — so it recovers on its own instead of waiting for you to notice, without fighting you if you briefly place another window over it.
