@@ -34,7 +34,18 @@ const EVENTS: [&str; 6] = [
 const MARKER: &str = "--source claude";
 
 fn our_command(reporter: &Path) -> String {
-    format!("\"{}\" {}", reporter.display(), MARKER)
+    let base = format!("\"{}\" {}", reporter.display(), MARKER);
+    // Highest rule: a hook must NEVER surface an error in — or block — the running CLI
+    // session. On POSIX, Claude runs the command via `/bin/sh -c`, so guard it: swallow
+    // stderr and force a 0 exit, so even a missing/broken/half-updated reporter is
+    // invisible to the session (`sh` returns 127 "not found" for a deleted binary — the
+    // bare command would surface that). Not applied on Windows, where Claude's hook shell
+    // differs and the bare command stays the safe, unchanged default.
+    if cfg!(unix) {
+        format!("{base} 2>/dev/null || true")
+    } else {
+        base
+    }
 }
 
 /// Read settings.json into a JSON object. Missing/empty -> `{}`. A parse failure
@@ -217,6 +228,21 @@ mod tests {
 
     fn read(path: &Path) -> Value {
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn command_is_shell_guarded_on_unix_only() {
+        let cmd = our_command(&reporter());
+        // The marker must survive the guard (install/uninstall detection relies on it).
+        assert!(cmd.contains(MARKER), "marker must remain: {cmd}");
+        if cfg!(unix) {
+            // Missing/broken reporter must not surface in the session: swallow stderr,
+            // force exit 0.
+            assert!(cmd.ends_with("2>/dev/null || true"), "unix hook must be guarded: {cmd}");
+        } else {
+            // Windows keeps the bare command (Claude's hook shell differs there).
+            assert!(!cmd.contains("|| true"), "windows hook stays bare: {cmd}");
+        }
     }
 
     #[test]

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-07-15
+
+### Added
+- **The remote agent keeps itself up to date — no `--update`, no manual deletion.** On every run `remote-agent.sh` now does a cheap conditional check (a single `If-Modified-Since` request) and refreshes the agent binaries only when a newer release exists, so a machine you set up once stays current on its own. Offline or rate-limited? It silently keeps the binary already on disk. Opt out entirely with `CSM_NO_UPDATE=1`.
+
+### Changed
+- **Binary updates are now atomic — they can never disrupt a running session.** Instead of extracting in place (which briefly truncates the file), the launcher unpacks into a temp dir on the same filesystem and `rename()`s each binary over the old one. A Claude hook firing mid-update always sees a *complete* `session-reporter` — old or new, never missing or half-written. This is the project's highest rule: monitoring must never break the calling CLI.
+- **A freshly downloaded binary always wins over a stale copy elsewhere on `$PATH`.** The launcher now prefers `./csm-agent` over a `$PATH` copy (an explicit `CSM_AGENT_BIN` still overrides), permanently retiring the class of bug where an old `csm-agent` on `$PATH` shadowed every update and kept ignoring `--include-dir`.
+
+### Fixed
+- **A missing or broken `session-reporter` can no longer surface an error in the Claude session (POSIX).** Claude runs the hook via `/bin/sh`; the installed command is now guarded (`… 2>/dev/null || true`) so even a deleted, un-executable, or mid-update binary is invisible to — and never blocks — the running CLI, instead of the shell printing `127: not found`. (Windows keeps the bare command; its hook shell differs.)
+
 ## [0.1.12] - 2026-07-15
 
 ### Fixed

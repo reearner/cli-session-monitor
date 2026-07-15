@@ -1099,13 +1099,16 @@ fn export_agent_script(state: State<AppState>) -> Result<String, String> {
 #                                             subdirs count). Same as: CSM_WATCH_DIRS=DIR ...
 #   bash remote-agent.sh --install-claude     install Claude Code hooks here, then run
 #   bash remote-agent.sh --uninstall          remove the Claude hooks installed here, then exit
-#   bash remote-agent.sh --update             re-download the agent binaries (latest release), then run
+#   bash remote-agent.sh --update             force re-download of the latest release, then run
 #
-# Needs two small binaries on THIS host: csm-agent and session-reporter. On
-# x86_64 Linux this script AUTO-DOWNLOADS them from the GitHub release on first
-# run (needs curl or wget; static, no Rust). Alternatives: set CSM_AGENT_BIN /
-# CSM_REPORTER_BIN, drop the binaries next to this script, or run inside a repo
-# checkout with cargo (it builds them).
+# Needs two small binaries on THIS host: csm-agent and session-reporter. On x86_64
+# Linux this script AUTO-DOWNLOADS them from the GitHub release when missing, and on
+# every run quietly REFRESHES them if a newer release exists (a cheap conditional
+# request — no download unless it's actually newer; set CSM_NO_UPDATE=1 to disable).
+# Updates are applied atomically (temp file + rename), so a Claude hook firing during
+# an update never sees a missing/half-written binary. Needs curl or wget; static, no
+# Rust. Alternatives: set CSM_AGENT_BIN / CSM_REPORTER_BIN, drop the binaries next to
+# this script, or run inside a repo checkout with cargo (it builds them).
 #
 # Monitors BOTH CLIs and relays session status to your ntfy topic (the desktop app
 # subscribes to it). Codex is automatic (its rollout files); Claude Code needs its
@@ -1139,8 +1142,9 @@ while [ $# -gt 0 ]; do
       echo "                      (equivalent to setting CSM_WATCH_DIRS=DIR in the environment)"
       echo "  --install-claude    install Claude Code hooks here, then run"
       echo "  --uninstall         remove the Claude hooks, then exit"
-      echo "  --update            re-download the agent binaries (latest release), then run"
+      echo "  --update            force re-download of the latest release, then run"
       echo "  -h, --help          show this help and exit"
+      echo "(A normal run auto-refreshes binaries if a newer release exists; set CSM_NO_UPDATE=1 to disable.)"
       exit 0 ;;
     *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
@@ -1153,57 +1157,95 @@ else
   export CSM_WATCH_DIRS="${CSM_WATCH_DIRS:-}"
 fi
 
-# --update: drop any local agent binaries so a fresh tarball fully replaces them.
-# locate() (below) additionally ignores stale PATH/./ copies under FORCE_UPDATE, so a
-# csm-agent installed elsewhere on $PATH can't shadow the update and keep old code running.
-if [ "$FORCE_UPDATE" = 1 ]; then
-  echo "Updating: removing local csm-agent / session-reporter to re-fetch the latest release..." >&2
-  rm -f ./csm-agent ./session-reporter
-fi
-
-# Prebuilt static binaries live in the GitHub release; auto-fetched on first run
-# (x86_64 Linux only — the prebuilt target is x86_64-musl). Override the repo with
-# CSM_RELEASE_REPO if you forked.
+# Prebuilt static binaries live in the GitHub release; auto-fetched when missing and
+# auto-refreshed when a newer release exists (x86_64 Linux only — the prebuilt target is
+# x86_64-musl). Override the repo with CSM_RELEASE_REPO if you forked.
 RELEASE_REPO="${CSM_RELEASE_REPO:-reearner/cli-session-monitor}"
 RELEASE_TARBALL="csm-remote-x86_64-linux.tar.gz"
+
+download_to() {   # $1 = destination file. ALWAYS call in a tested context (if / ||).
+  local url="https://github.com/$RELEASE_REPO/releases/latest/download/$RELEASE_TARBALL"
+  if command -v curl >/dev/null 2>&1; then curl -fsSL "$url" -o "$1"
+  elif command -v wget >/dev/null 2>&1; then wget -qO "$1" "$url"
+  else return 1
+  fi
+}
+
+# Install binaries from a downloaded tarball ATOMICALLY: unpack into a temp dir on the SAME
+# filesystem, then mv each binary over the old one. rename() is atomic, so a Claude hook
+# firing mid-update always sees a COMPLETE binary (old or new) — never a missing or
+# half-written file. This is the project's highest rule: never disrupt the running CLI.
+# (Extracting in place with `tar -xzf ./name` truncates the file while it writes — a real,
+# if brief, gap where a hook could hit a partial binary. This avoids it entirely.)
+extract_and_swap() {   # $1 = tarball path
+  local tgz="$1" tmpd b rc=0
+  tmpd="$(mktemp -d ./.csm-upd-XXXXXX)" || return 1
+  if tar -xzf "$tgz" -C "$tmpd" 2>/dev/null; then
+    for b in csm-agent session-reporter; do
+      if [ -f "$tmpd/$b" ]; then
+        chmod +x "$tmpd/$b" 2>/dev/null || true
+        mv -f "$tmpd/$b" "./$b" || rc=1      # same-FS rename = atomic; no gap for running hooks
+      fi
+    done
+  else
+    rc=1
+  fi
+  rm -rf "$tmpd" 2>/dev/null || true
+  return $rc
+}
+
 _fetched=0
-fetch_release() {
-  [ "$_fetched" = 1 ] && return 1            # only try once per run
+fetch_release() {   # unconditional fetch of the latest release; idempotent per run
+  [ "$_fetched" = 1 ] && return 1
   _fetched=1
   [ "$(uname -m)" = "x86_64" ] || return 1   # prebuilt is x86_64 only
+  echo "Fetching prebuilt agent (latest release)..." >&2
+  local tgz="./.csm-dl.$$.tar.gz" rc=0
+  if download_to "$tgz"; then extract_and_swap "$tgz" || rc=1; else rc=1; fi
+  rm -f "$tgz" 2>/dev/null || true
+  return $rc
+}
+
+# On a normal run, refresh to the latest release BEFORE using the binary — but only if it's
+# actually newer. A conditional GET (curl -z sends the local binary's mtime as
+# If-Modified-Since) downloads only when the release asset is newer, so a warm start costs
+# one cheap request and usually no download. Fully non-fatal and offline-safe: any hiccup
+# falls through to the binary already on disk. The swap is atomic (extract_and_swap), so a
+# running session never sees a gap. Opt out entirely with CSM_NO_UPDATE=1.
+maybe_autoupdate() {
+  [ "${CSM_NO_UPDATE:-0}" = 1 ] && return 0
+  [ "$(uname -m)" = "x86_64" ] || return 0
+  command -v curl >/dev/null 2>&1 || return 0   # -z conditional GET needs curl
+  [ -f ./csm-agent ] || return 0                # nothing local yet -> the fetch path handles it
   local url="https://github.com/$RELEASE_REPO/releases/latest/download/$RELEASE_TARBALL"
-  echo "Fetching prebuilt agent: $url" >&2
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$url" -o "$RELEASE_TARBALL" || return 1
-  elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$RELEASE_TARBALL" "$url" || return 1
-  else
-    return 1                                  # no downloader available
+  local tgz="./.csm-chk.$$.tar.gz"
+  if curl -fsSL -z ./csm-agent "$url" -o "$tgz" 2>/dev/null && [ -s "$tgz" ]; then
+    extract_and_swap "$tgz" && echo "csm: refreshed agent binaries to the latest release." >&2
   fi
-  tar -xzf "$RELEASE_TARBALL" || return 1
-  chmod +x ./csm-agent ./session-reporter 2>/dev/null || true
+  rm -f "$tgz" 2>/dev/null || true
   return 0
 }
 
-# Locate a binary: $3 override, PATH, ./name, auto-downloaded release, or (in a
-# repo w/ cargo) build it. The cargo branch only succeeds if the build produced
-# the binary (so a failed build reports "not found" with guidance, not a bogus
-# path later). Under --update we DON'T reuse PATH/./ copies: a stale csm-agent on
-# $PATH would otherwise win over the just-removed ./binary and silently defeat the
-# update (the agent keeps running old code — e.g. ignoring CSM_WATCH_DIRS). So force
-# a fresh fetch (fetch_release extracts BOTH binaries and is idempotent per run).
+# Drive the update BEFORE locating: --update forces a fresh fetch; a normal run refreshes
+# only if newer. Both swap atomically, so a running session never sees a gap; on failure we
+# keep whatever binary is already on disk rather than break (resilience over freshness).
+if [ "$FORCE_UPDATE" = 1 ]; then
+  echo "Updating to the latest release..." >&2
+  fetch_release || echo "csm: update fetch failed; keeping existing binaries." >&2
+else
+  maybe_autoupdate
+fi
+
+# Locate a binary: $3 override, then ./name (our managed location — preferred so a freshly
+# downloaded binary always wins over a stale copy elsewhere on $PATH; this is what kept old
+# code, e.g. an agent ignoring CSM_WATCH_DIRS, running after updates), then $PATH, then a
+# fresh fetch, then (in a repo w/ cargo) a build. The cargo branch only succeeds if the
+# build produced the binary, so a failed build reports "not found" with guidance.
 locate() {
   local bin="$3"
-  if [ -z "$bin" ] && [ "$FORCE_UPDATE" = 1 ]; then
-    fetch_release || true
+  if [ -z "$bin" ]; then
     if [ -x "./$1" ]; then bin="./$1";
-    elif command -v cargo >/dev/null 2>&1 && [ -f Cargo.toml ] \
-         && cargo build --release -p "$2" >&2 && [ -x "./target/release/$1" ]; then
-      bin="./target/release/$1";
-    fi
-  elif [ -z "$bin" ]; then
-    if command -v "$1" >/dev/null 2>&1; then bin="$(command -v "$1")";
-    elif [ -x "./$1" ]; then bin="./$1";
+    elif command -v "$1" >/dev/null 2>&1; then bin="$(command -v "$1")";
     elif fetch_release && [ -x "./$1" ]; then bin="./$1";
     elif command -v cargo >/dev/null 2>&1 && [ -f Cargo.toml ]; then
       if cargo build --release -p "$2" >&2 && [ -x "./target/release/$1" ]; then
