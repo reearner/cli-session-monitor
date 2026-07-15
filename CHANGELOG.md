@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The widget stays on top for real now.** Windows silently demotes always-on-top windows in situations that fire no event we can hook (another app going fullscreen, certain focus changes), after which the widget slipped behind other windows until you re-toggled "always on top" by hand. A background keeper now re-asserts topmost about once a minute while the setting is on (and skips it when you've deliberately pinned the widget to the desktop), reclaiming the top spot without stealing focus — so it recovers on its own instead of waiting for you to notice, without fighting you if you briefly place another window over it.
+
 ## [0.1.11] - 2026-07-12
 
 ### Fixed

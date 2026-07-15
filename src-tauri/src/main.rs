@@ -1523,6 +1523,61 @@ fn spawn_idle_ticker(app: AppHandle) {
     });
 }
 
+/// Keep the widget pinned on top. Windows silently demotes always-on-top windows
+/// under conditions we get no event for (another app going fullscreen, some focus
+/// changes), after which the widget slips behind others until the user re-toggles the
+/// setting by hand. There is no reliable trigger to hook, so poll about once a minute
+/// and gently re-assert topmost while the preference is on and the window isn't
+/// intentionally desktop-pinned. This just automates the manual re-toggle that was
+/// already known to recover it; a minute keeps it unobtrusive (you can briefly put
+/// another window over the widget without it fighting back) while still self-healing.
+fn spawn_topmost_keeper(app: AppHandle) {
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(60));
+        let (aot, pinned) = {
+            let state = app.state::<AppState>();
+            let cfg = state.config.lock().unwrap();
+            (cfg.always_on_top, cfg.desktop_pinned)
+        };
+        if aot && !pinned {
+            if let Some(win) = app.get_webview_window("main") {
+                if win.is_visible().unwrap_or(false) {
+                    reassert_topmost(&win);
+                }
+            }
+        }
+    });
+}
+
+/// Re-insert the window into the topmost z-order band without activating, moving, or
+/// resizing it — so it reclaims "on top" without stealing focus or disturbing a drag.
+/// Windows only; a no-op elsewhere.
+#[cfg(windows)]
+fn reassert_topmost(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+    let hwnd = match window.hwnd() {
+        Ok(h) => HWND(h.0 as _),
+        Err(_) => return,
+    };
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn reassert_topmost(_window: &tauri::WebviewWindow) {}
+
 /// Apply desktop-resident window preferences (all default OFF, user-toggleable):
 /// taskbar visibility, desktop-pin vs always-on-top, left docking, and autostart.
 fn apply_window_prefs(app: &AppHandle, cfg: &Config) {
@@ -1784,7 +1839,8 @@ fn main() {
             apply_window_prefs(&handle, &startup_config);
             build_tray(&handle)?;
             spawn_event_loop(handle.clone());
-            spawn_idle_ticker(handle);
+            spawn_idle_ticker(handle.clone());
+            spawn_topmost_keeper(handle);
             Ok(())
         })
         .run(tauri::generate_context!())
