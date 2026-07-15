@@ -1153,8 +1153,9 @@ else
   export CSM_WATCH_DIRS="${CSM_WATCH_DIRS:-}"
 fi
 
-# --update: drop any local agent binaries so `locate` re-fetches the latest release
-# (the script otherwise reuses a binary that already exists locally, never updating).
+# --update: drop any local agent binaries so a fresh tarball fully replaces them.
+# locate() (below) additionally ignores stale PATH/./ copies under FORCE_UPDATE, so a
+# csm-agent installed elsewhere on $PATH can't shadow the update and keep old code running.
 if [ "$FORCE_UPDATE" = 1 ]; then
   echo "Updating: removing local csm-agent / session-reporter to re-fetch the latest release..." >&2
   rm -f ./csm-agent ./session-reporter
@@ -1187,10 +1188,20 @@ fetch_release() {
 # Locate a binary: $3 override, PATH, ./name, auto-downloaded release, or (in a
 # repo w/ cargo) build it. The cargo branch only succeeds if the build produced
 # the binary (so a failed build reports "not found" with guidance, not a bogus
-# path later).
+# path later). Under --update we DON'T reuse PATH/./ copies: a stale csm-agent on
+# $PATH would otherwise win over the just-removed ./binary and silently defeat the
+# update (the agent keeps running old code — e.g. ignoring CSM_WATCH_DIRS). So force
+# a fresh fetch (fetch_release extracts BOTH binaries and is idempotent per run).
 locate() {
   local bin="$3"
-  if [ -z "$bin" ]; then
+  if [ -z "$bin" ] && [ "$FORCE_UPDATE" = 1 ]; then
+    fetch_release || true
+    if [ -x "./$1" ]; then bin="./$1";
+    elif command -v cargo >/dev/null 2>&1 && [ -f Cargo.toml ] \
+         && cargo build --release -p "$2" >&2 && [ -x "./target/release/$1" ]; then
+      bin="./target/release/$1";
+    fi
+  elif [ -z "$bin" ]; then
     if command -v "$1" >/dev/null 2>&1; then bin="$(command -v "$1")";
     elif [ -x "./$1" ]; then bin="./$1";
     elif fetch_release && [ -x "./$1" ]; then bin="./$1";
