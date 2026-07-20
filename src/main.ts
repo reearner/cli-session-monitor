@@ -307,8 +307,13 @@ async function snapPanelToEdge(): Promise<void> {
     if (nx !== pos.x || ny !== pos.y) {
       await programmaticMove(() => setWindowBounds(nx, ny, w, h));
     }
-    // The full panel just settled here — remember it as the new home.
+    // The full panel just settled here — remember it as the new home. This runs
+    // ONLY after a user drag (our own moves set suppressSnap), so the widget now
+    // lives wherever they put the panel: drop the stale pre-expand spot too, or
+    // collapsing would snap the ball back to where it sat BEFORE expanding and the
+    // two modes would drift apart. Panel and ball share one position, both ways.
     panelPos = new PhysicalPosition(nx, ny);
+    preExpandPos = null;
   } catch {
     /* ignore */
   }
@@ -818,7 +823,11 @@ pillEl.addEventListener("click", async () => {
   expanded = true;
   applyMode();
 });
-// in lite mode, clicking the title collapses back to the docked bar
+// In lite mode, clicking the title collapses back to the docked bar. Dragging the
+// title is handled by the OS (it's a drag region — see .title in styles.css), not
+// here: a manual move-threshold drag can't work on a small no-drag island inside a
+// drag region, because the webview stops sending move events as soon as the pointer
+// leaves the text. A clean click still reaches us.
 titleEl.addEventListener("click", () => {
   if (lite && expanded) collapseNow();
 });
@@ -970,11 +979,16 @@ async function init(): Promise<void> {
       if (snapTimer) window.clearTimeout(snapTimer);
       snapTimer = window.setTimeout(() => {
         if (collapsed()) {
-          // ball/bar: dock to the nearest edge (re-orienting)
+          // ball/bar: dock to the nearest edge (re-orienting). Clear only the STATE
+          // flag — dockToEdge early-returns while `docked` is true. Deliberately keep
+          // the `docked` CSS class and edge class: dropping them here repaints the
+          // strip as a round ball for the whole of dockToEdge's async monitor query,
+          // which is the "turns into a ball for an instant" flash on every re-drop.
+          // The window is still strip-sized throughout, so the bar styling stays
+          // correct; dockToEdge re-applies the class and the new edge once it knows
+          // where we landed — re-orienting without ever morphing back to a ball.
           if (docked) {
             docked = false;
-            document.body.classList.remove("docked");
-            setEdgeClass(null);
           }
           // This fires only for a USER drag (our own moves set suppressSnap), so
           // bind the panel's home to where the widget was dragged — expanding then

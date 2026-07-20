@@ -1284,6 +1284,13 @@ if [ -z "$AGENT" ]; then
   echo "or set CSM_AGENT_BIN=/path, or run in a repo checkout with Rust/cargo." >&2
   exit 1
 fi
+# Show WHICH binary we resolved: when a fix or --include-dir "doesn't work" it is
+# almost always a stale copy being picked up, and the path says so at a glance. We
+# deliberately do NOT run `"$AGENT" --version` to probe it: agents older than 0.1.14
+# ignore argv entirely and would start relaying instead of reporting — hanging the
+# launcher. The agent prints its own version on startup; if no version line appears,
+# that IS the stale-binary tell.
+echo "csm-agent binary: $AGENT"
 echo "csm-agent -> $CSM_RELAY_URL/$CSM_RELAY_TOPIC"
 exec "$AGENT"
 "#;
@@ -1576,26 +1583,41 @@ fn spawn_idle_ticker(app: AppHandle) {
     });
 }
 
-/// Keep the widget pinned on top. Windows silently demotes always-on-top windows
-/// under conditions we get no event for (another app going fullscreen, some focus
-/// changes), after which the widget slips behind others until the user re-toggles the
-/// setting by hand. There is no reliable trigger to hook, so poll about once a minute
-/// and gently re-assert topmost while the preference is on and the window isn't
-/// intentionally desktop-pinned. This just automates the manual re-toggle that was
-/// already known to recover it; a minute keeps it unobtrusive (you can briefly put
-/// another window over the widget without it fighting back) while still self-healing.
-fn spawn_topmost_keeper(app: AppHandle) {
+/// Keep the widget's window state as the user asked for it. Two things get undone
+/// behind our back, neither with an event we can hook:
+///   * Windows silently demotes always-on-top windows (another app going fullscreen,
+///     some focus changes), leaving the widget behind other windows until the user
+///     re-toggles the setting by hand.
+///   * tao rebuilds and overwrites the window's entire ex-style from its own flags on
+///     any flag change, dropping the WS_EX_TOOLWINDOW that keeps the floating ball out
+///     of the taskbar and Alt-Tab — a stray taskbar icon reappears.
+/// So poll about once a minute and re-assert both. Each re-assert is a no-op when the
+/// state is already correct (set_tool_window early-returns; topmost is a plain
+/// SetWindowPos), so this is cheap and only acts when something actually broke. A
+/// minute keeps it unobtrusive — you can briefly put another window over the widget
+/// without it fighting back — while still self-healing without user action.
+fn spawn_window_style_keeper(app: AppHandle) {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(60));
-        let (aot, pinned) = {
+        let (aot, pinned, lite) = {
             let state = app.state::<AppState>();
             let cfg = state.config.lock().unwrap();
-            (cfg.always_on_top, cfg.desktop_pinned)
+            (cfg.always_on_top, cfg.desktop_pinned, cfg.lightweight)
         };
-        if aot && !pinned {
-            if let Some(win) = app.get_webview_window("main") {
-                if win.is_visible().unwrap_or(false) {
+        if let Some(win) = app.get_webview_window("main") {
+            if win.is_visible().unwrap_or(false) {
+                if aot && !pinned {
                     reassert_topmost(&win);
+                }
+                // Self-heal the tool-window style. tao rebuilds and overwrites the
+                // whole ex-style from its own flags whenever a window flag changes
+                // (show/hide, always-on-top, minimize…), silently dropping
+                // WS_EX_TOOLWINDOW and putting a taskbar icon back. The known paths
+                // re-assert it directly; this catches the ones we don't control.
+                // set_tool_window early-returns when the style is already correct, so
+                // this costs nothing normally and only repairs an actual clobber.
+                if lite {
+                    set_tool_window(&win, true);
                 }
             }
         }
@@ -1635,6 +1657,22 @@ fn reassert_topmost(_window: &tauri::WebviewWindow) {}
 /// taskbar visibility, desktop-pin vs always-on-top, left docking, and autostart.
 fn apply_window_prefs(app: &AppHandle, cfg: &Config) {
     if let Some(win) = app.get_webview_window("main") {
+        // ORDER MATTERS. tao's set_always_on_top / set_always_on_bottom don't just
+        // change z-order: on any flag change they rebuild the window's ENTIRE style
+        // from tao's own flags and overwrite it
+        // (window_state.rs: apply_diff -> SetWindowLongW(GWL_EXSTYLE, style_ex)).
+        // Those flags know nothing about WS_EX_TOOLWINDOW and re-add WS_EX_APPWINDOW,
+        // so anything we set by hand BEFORE them is silently wiped — which is exactly
+        // how the stray taskbar icon kept coming back after a settings save. So do the
+        // tao calls FIRST and apply our own style LAST, making ours the one that wins.
+        if cfg.desktop_pinned {
+            let _ = win.set_always_on_top(false);
+            let _ = win.set_always_on_bottom(true);
+        } else {
+            let _ = win.set_always_on_bottom(false);
+            let _ = win.set_always_on_top(cfg.always_on_top);
+        }
+
         // Lightweight (floating-ball / bar) mode => tool window: out of the taskbar
         // AND the Alt-Tab switcher, so it behaves like a desktop orb, not an app.
         // Don't ALSO call set_skip_taskbar here: with skip_taskbar=false it clears
@@ -1644,16 +1682,8 @@ fn apply_window_prefs(app: &AppHandle, cfg: &Config) {
         if cfg.lightweight {
             set_tool_window(&win, true);
         } else {
-            set_tool_window(&win, false);
             let _ = win.set_skip_taskbar(cfg.skip_taskbar);
-        }
-
-        if cfg.desktop_pinned {
-            let _ = win.set_always_on_top(false);
-            let _ = win.set_always_on_bottom(true);
-        } else {
-            let _ = win.set_always_on_bottom(false);
-            let _ = win.set_always_on_top(cfg.always_on_top);
+            set_tool_window(&win, false);
         }
 
         if cfg.dock_left {
@@ -1683,9 +1713,8 @@ fn apply_window_prefs(app: &AppHandle, cfg: &Config) {
 fn set_tool_window(window: &tauri::WebviewWindow, enable: bool) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-        GWL_EXSTYLE, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE, SW_SHOWNA,
-        WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
     };
     let hwnd = match window.hwnd() {
         Ok(h) => HWND(h.0 as _),
@@ -1699,21 +1728,21 @@ fn set_tool_window(window: &tauri::WebviewWindow, enable: bool) {
             ex & !(WS_EX_TOOLWINDOW.0 as isize)
         };
         if want == ex {
-            return; // already right — skip the visibility cycle below (it would flicker)
-        }
-        // Windows decides whether a window gets a TASKBAR BUTTON at the moment it is
-        // shown. Adding WS_EX_TOOLWINDOW to an ALREADY-VISIBLE window changes the
-        // style but leaves the existing button behind — the stray "app icon" that
-        // reappeared every launch. The button is only re-evaluated on show, so cycle
-        // visibility around the style change. SW_SHOWNA re-shows without taking focus.
-        let visible = IsWindowVisible(hwnd).as_bool();
-        if visible {
-            let _ = ShowWindow(hwnd, SW_HIDE);
+            return; // already right — nothing to do (keeps the keeper's re-assert free)
         }
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, want);
-        if visible {
-            let _ = ShowWindow(hwnd, SW_SHOWNA);
-        }
+    }
+    // Windows decides whether a window gets a TASKBAR BUTTON when the window is SHOWN,
+    // so the style alone doesn't retire a button that already exists — the stray "app
+    // icon". This used to hide/show the window to force a re-evaluation, but that cycle
+    // is a visible blink, and now that the keeper can repair the style at any moment it
+    // would blink during normal use (it read as the bar flashing back into a ball).
+    // ITaskbarList::DeleteTab — which set_skip_taskbar wraps — retires the button
+    // directly, with no flicker, and touches none of tao's window flags.
+    if enable {
+        let _ = window.set_skip_taskbar(true);
+    }
+    unsafe {
         let _ = SetWindowPos(
             hwnd,
             None,
@@ -1721,7 +1750,7 @@ fn set_tool_window(window: &tauri::WebviewWindow, enable: bool) {
             0,
             0,
             0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         );
     }
 }
@@ -1807,6 +1836,17 @@ fn toggle_main_window(app: &AppHandle) {
         } else {
             let _ = win.show();
             let _ = win.set_focus();
+            // show() flips tao's VISIBLE flag, which rebuilds and overwrites the
+            // window's ex-style from tao's flags — dropping WS_EX_TOOLWINDOW and
+            // handing the widget a taskbar icon again. Re-assert it after showing.
+            let lite = {
+                let state = app.state::<AppState>();
+                let cfg = state.config.lock().unwrap();
+                cfg.lightweight
+            };
+            if lite {
+                set_tool_window(&win, true);
+            }
         }
     }
 }
@@ -1893,7 +1933,7 @@ fn main() {
             build_tray(&handle)?;
             spawn_event_loop(handle.clone());
             spawn_idle_ticker(handle.clone());
-            spawn_topmost_keeper(handle);
+            spawn_window_style_keeper(handle);
             Ok(())
         })
         .run(tauri::generate_context!())

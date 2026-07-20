@@ -75,6 +75,14 @@ fn is_redundant(last_for_session: Option<EventKind>, ev: EventKind) -> bool {
 }
 
 fn main() {
+    // Report and exit, so a version can be checked without starting the relay.
+    // NOTE: versions before this one ignored argv completely and would just START
+    // RELAYING, so the launcher must never probe an unknown binary with this.
+    if std::env::args().skip(1).any(|a| a == "--version" || a == "-V") {
+        println!("csm-agent {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
     let topic = match std::env::var("CSM_RELAY_TOPIC") {
         Ok(t) if !t.trim().is_empty() => t,
         _ => {
@@ -91,8 +99,14 @@ fn main() {
         .map(|s| parse_watch_dirs(&s))
         .unwrap_or_default();
 
+    // Lead with the version: on a remote box the #1 question when the filter or a
+    // fix "doesn't work" is which binary is actually running (an old one silently
+    // ignores CSM_WATCH_DIRS entirely). Printing it every start makes a stale binary
+    // obvious — and its ABSENCE is itself the tell, since versions before this one
+    // don't print it.
     eprintln!(
-        "csm-agent: host={} -> publishing Codex/Claude events to {}/{}",
+        "csm-agent: version {} | host={} -> publishing Codex/Claude events to {}/{}",
+        env!("CARGO_PKG_VERSION"),
         csm_core::host_name(),
         base.trim_end_matches('/'),
         topic

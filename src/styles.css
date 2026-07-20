@@ -45,10 +45,15 @@ body {
   -webkit-app-region: drag; /* draggable frameless window */
 }
 .title {
-  /* Not a drag region: it's the click-to-collapse target, and an OS drag region
-     swallows the click on any micro-movement. Drag the panel by the rest of the
-     top bar. */
-  -webkit-app-region: no-drag;
+  /* An OS drag region, like the docked bar — the panel's natural drag handle.
+     A manual move-threshold drag (what the round ball uses) CANNOT work here: the
+     title is a small no-drag island surrounded by the topbar's drag region, so the
+     moment the pointer leaves the few dozen pixels of text the webview stops sending
+     move events, the threshold is never reached, and the window never moves at all.
+     The docked bar hit exactly this and solved it the same way. Clicking still
+     collapses: a clean click passes through a drag region (only a click that drifts
+     is consumed as a drag). */
+  -webkit-app-region: drag;
   font-weight: 600;
   cursor: pointer;
 }

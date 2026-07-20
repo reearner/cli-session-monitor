@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-07-20
+
+### Added
+- **The remote agent reports its version on every start.** `csm-agent: version 0.1.14 | host=… -> publishing …` — on a remote box the first question when a fix or `--include-dir` "doesn't work" is always *which binary is actually running*, and an old one ignores `CSM_WATCH_DIRS` silently. The launcher now also prints the binary path it resolved. Versions before this don't print a version line at all, so its absence is itself the stale-binary tell. `csm-agent --version` reports it without starting the relay.
+
+### Fixed
+- **The floating ball's taskbar icon is gone for good.** The v0.1.11 fix set `WS_EX_TOOLWINDOW` but couldn't keep it: tao rebuilds the window's *entire* extended style from its own flags on any flag change (`SetWindowLongW(GWL_EXSTYLE, …)`) and knows nothing about that style, so showing/hiding from the tray or toggling always-on-top silently wiped it and handed the widget an icon again. The style is now applied *after* those calls, re-asserted when the window is shown, and repaired by a keeper for paths we don't control.
+- **The panel and the ball share one position, both ways.** Dragging the panel somewhere and collapsing snapped the ball back to where it sat *before* expanding (a stale anchor that was never invalidated), so the two modes drifted apart. Moving either one now moves both.
+- **The docked bar no longer flashes into a ball when you drop it.** Re-docking cleared the bar's styling before an async monitor query, so it rendered as a round ball for the duration — the styling now stays put and only re-orients once the new edge is known.
+- **The panel can be dragged by its title.** Grabbing the obvious spot — the window's name — did nothing, because the title was excluded from the header's drag region (to protect its click-to-collapse), leaving only the bare gap beside it draggable. It's now a drag region like the docked bar. A move-threshold drag (what the round ball uses) can't work there: the title is a small excluded island inside the header's drag region, so the webview stops sending move events the instant the pointer leaves the text, the threshold is never reached and the window never moves at all. A clean click still collapses.
+- **Repairing the window style no longer blinks.** It used to hide and re-show the window to make Windows re-evaluate the taskbar button; that flicker became visible once the repair could run at any time. It now retires the button directly via `ITaskbarList::DeleteTab`.
+
+### Changed
+- Crate versions now track the product version (they had drifted to `0.1.3`), so the version the agent reports is the release you installed.
+
 ## [0.1.13] - 2026-07-15
 
 ### Added
